@@ -4,11 +4,31 @@ mod ipc;
 mod services;
 mod state;
 
+use log::LevelFilter;
+use tauri_plugin_log::{Target, TargetKind};
+
 use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let log_level = if cfg!(debug_assertions) {
+        LevelFilter::Trace
+    } else {
+        LevelFilter::Info
+    };
+
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::LogDir {
+                        file_name: Some("lancedb-viewer.log".to_string()),
+                    }),
+                ])
+                .level(log_level)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .manage(AppState::new())
