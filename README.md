@@ -41,6 +41,11 @@
 
 - 执行：`cargo test --manifest-path src-tauri/Cargo.toml`
 
+### 示例数据库
+
+- 生成示例库：`cargo run --manifest-path src-tauri/Cargo.toml --bin seed_db -- sample-db`
+- 可选参数：`--table <name>`、`--rows <count>`（默认表名 `items`，默认 50 行）
+
 ## 安全与权限
 
 当前 `capabilities/default.json` 开启：
