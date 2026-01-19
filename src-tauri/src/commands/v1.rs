@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use arrow_json::writer::record_batches_to_json_rows;
+use arrow_array::RecordBatch;
+use arrow_json::ArrayWriter;
 use futures_util::TryStreamExt;
 use lancedb::query::{ExecutableQuery, QueryBase};
 
@@ -11,6 +12,26 @@ use crate::ipc::v1::{
     ScanRequestV1, ScanResponseV1, SchemaDefinition, TableHandle, TableInfo,
 };
 use crate::state::AppState;
+
+fn batches_to_json_rows(batches: &[RecordBatch]) -> Result<Vec<serde_json::Value>, String> {
+    if batches.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut writer = ArrayWriter::new(Vec::new());
+    let batch_refs: Vec<&RecordBatch> = batches.iter().collect();
+
+    writer
+        .write_batches(&batch_refs)
+        .map_err(|error| error.to_string())?;
+    writer.finish().map_err(|error| error.to_string())?;
+
+    let json = writer.into_inner();
+    let rows: Vec<serde_json::Value> =
+        serde_json::from_slice(&json).map_err(|error| error.to_string())?;
+
+    Ok(rows)
+}
 
 #[tauri::command]
 pub async fn connect_v1(
@@ -213,7 +234,7 @@ pub async fn scan_v1(
         SchemaDefinition::from_arrow_schema(schema.as_ref())
     };
 
-    let mut rows = match record_batches_to_json_rows(&batches) {
+    let mut rows = match batches_to_json_rows(&batches) {
         Ok(rows) => rows,
         Err(error) => return Ok(ResultEnvelope::err(ErrorCode::Internal, error.to_string())),
     };
