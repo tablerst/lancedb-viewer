@@ -18,6 +18,7 @@ export function useConnection(
 	const connectionId = ref<string | null>(null);
 	const tables = ref<TableInfo[]>([]);
 	const activeTableName = ref<string | null>(null);
+	const activeTableId = ref<string | null>(null);
 	const schema = ref<SchemaDefinition | null>(null);
 	const isConnecting = ref(false);
 	const isRefreshing = ref(false);
@@ -27,6 +28,7 @@ export function useConnection(
 		connectionId.value = null;
 		tables.value = [];
 		activeTableName.value = null;
+		activeTableId.value = null;
 		schema.value = null;
 	}
 
@@ -90,8 +92,10 @@ export function useConnection(
 		try {
 			isOpening.value = true;
 			activeTableName.value = name;
+			activeTableId.value = null;
 			schema.value = null;
 			const handle = unwrapEnvelope(await openTableV1(id, name));
+			activeTableId.value = handle.tableId;
 			schema.value = unwrapEnvelope(await getSchemaV1(handle.tableId));
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "打开表失败";
@@ -105,6 +109,7 @@ export function useConnection(
 		connectionId,
 		tables,
 		activeTableName,
+		activeTableId,
 		schema,
 		isConnecting,
 		isRefreshing,

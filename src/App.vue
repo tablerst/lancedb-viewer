@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
-import type { DataTableColumns } from "naive-ui";
+import { watch } from "vue";
+import { RouterLink, RouterView, useRoute } from "vue-router";
 
-import type { SchemaField } from "./ipc/v1";
 import { useConnection } from "./composables/useConnection";
 import { useProfiles } from "./composables/useProfiles";
 import { useStatusMessages } from "./composables/useStatusMessages";
+import { provideWorkspace } from "./composables/workspaceContext";
 import { themeOverrides } from "./theme/naiveTheme";
 
 const { statusMessage, errorMessage, setStatus, setError, clearMessages } = useStatusMessages();
@@ -25,6 +25,7 @@ const {
 	connectionId,
 	tables,
 	activeTableName,
+	activeTableId,
 	schema,
 	isConnecting,
 	isRefreshing,
@@ -43,16 +44,40 @@ watch(activeProfileId, () => {
 	clearMessages();
 });
 
-const schemaColumns: DataTableColumns<SchemaField> = [
-	{ title: "字段", key: "name" },
-	{ title: "类型", key: "dataType" },
-	{
-		title: "Nullable",
-		key: "nullable",
-		render: (row) => (row.nullable ? "是" : "否"),
-	},
+provideWorkspace({
+	profiles,
+	activeProfileId,
+	activeProfile,
+	profileForm,
+	isSavingProfile,
+	addProfile,
+	selectProfile,
+	connectionId,
+	tables,
+	activeTableName,
+	activeTableId,
+	schema,
+	isConnecting,
+	isRefreshing,
+	isOpening,
+	connectActiveProfile,
+	refreshTables,
+	openTable,
+	resetConnection,
+	statusMessage,
+	errorMessage,
+	setStatus,
+	setError,
+	clearMessages,
+});
+
+const route = useRoute();
+const navigationItems = [
+	{ label: "资源浏览", to: "/" },
+	{ label: "检索工作台", to: "/search" },
 ];
-const schemaData = computed(() => schema.value?.fields ?? []);
+
+const isActiveRoute = (path: string) => route.path === path;
 </script>
 
 <template>
@@ -63,7 +88,7 @@ const schemaData = computed(() => schema.value?.fields ?? []);
 				<div class="flex items-center justify-between">
 					<div>
 						<div class="text-lg font-semibold text-slate-900">LanceDB Studio</div>
-						<p class="text-xs text-slate-500">JSON-first IPC · 可扩展连接抽象</p>
+						<p class="text-xs text-slate-500">JSON-first IPC · 体验闭环优先</p>
 					</div>
 					<div class="flex items-center gap-2">
 						<NTag type="info" size="small">v1</NTag>
@@ -75,6 +100,22 @@ const schemaData = computed(() => schema.value?.fields ?? []);
 			<NLayout has-sider>
 				<NLayoutSider bordered width="320" content-style="padding: 16px;">
 					<div class="space-y-4">
+						<NCard size="small" title="导航" class="shadow-sm">
+							<div class="grid gap-2">
+								<NButton
+									v-for="item in navigationItems"
+									:key="item.to"
+									block
+									:tag="RouterLink"
+									:to="item.to"
+									:type="isActiveRoute(item.to) ? 'primary' : 'default'"
+									:secondary="!isActiveRoute(item.to)"
+								>
+									{{ item.label }}
+								</NButton>
+							</div>
+						</NCard>
+
 						<NCard size="small" title="连接档案" class="shadow-sm">
 							<NEmpty v-if="!profiles.length" description="暂无连接档案" />
 							<div v-else class="space-y-2">
@@ -134,6 +175,34 @@ const schemaData = computed(() => schema.value?.fields ?? []);
 								保存档案
 							</NButton>
 						</NCard>
+
+						<NCard size="small" title="表列表" class="shadow-sm">
+							<template #header-extra>
+								<NButton
+									size="tiny"
+									quaternary
+									:loading="isRefreshing"
+									:disabled="!connectionId"
+									@click="refreshTables"
+								>
+									刷新
+								</NButton>
+							</template>
+							<NEmpty v-if="!tables.length" description="暂无数据表" />
+							<div v-else class="space-y-2">
+								<NButton
+									v-for="table in tables"
+									:key="table.name"
+									block
+									:loading="isOpening && table.name === activeTableName"
+									:type="table.name === activeTableName ? 'primary' : 'default'"
+									:secondary="table.name !== activeTableName"
+									@click="openTable(table.name)"
+								>
+									{{ table.name }}
+								</NButton>
+							</div>
+						</NCard>
 					</div>
 				</NLayoutSider>
 
@@ -158,46 +227,7 @@ const schemaData = computed(() => schema.value?.fields ?? []);
 							</div>
 						</NCard>
 
-						<div class="grid gap-4 lg:grid-cols-2">
-							<NCard size="small" title="表列表" class="shadow-sm">
-								<template #header-extra>
-									<NButton
-										size="tiny"
-										quaternary
-										:loading="isRefreshing"
-										:disabled="!connectionId"
-										@click="refreshTables"
-									>
-										刷新
-									</NButton>
-								</template>
-								<NEmpty v-if="!tables.length" description="暂无数据表" />
-								<div v-else class="space-y-2">
-									<NButton
-										v-for="table in tables"
-										:key="table.name"
-										block
-										:loading="isOpening && table.name === activeTableName"
-										:type="table.name === activeTableName ? 'primary' : 'default'"
-										:secondary="table.name !== activeTableName"
-										@click="openTable(table.name)"
-									>
-										{{ table.name }}
-									</NButton>
-								</div>
-							</NCard>
-
-							<NCard size="small" title="Schema" class="shadow-sm">
-								<NEmpty v-if="!schema" description="选择表以查看 schema" />
-								<NDataTable
-									v-else
-									size="small"
-									:columns="schemaColumns"
-									:data="schemaData"
-									:bordered="false"
-								/>
-							</NCard>
-						</div>
+						<RouterView />
 					</div>
 				</NLayoutContent>
 			</NLayout>

@@ -94,3 +94,38 @@ export interface ScanResponseV1 {
 	chunk: DataChunk;
 	nextOffset?: number;
 }
+
+export interface VectorSearchRequestV1 {
+	tableId: string;
+	vector: number[];
+	column?: string;
+	topK?: number;
+	projection?: string[];
+	filter?: string;
+	nprobes?: number;
+	refineFactor?: number;
+	offset?: number;
+}
+
+export interface FtsSearchRequestV1 {
+	tableId: string;
+	query: string;
+	columns?: string[];
+	limit?: number;
+	offset?: number;
+	projection?: string[];
+	filter?: string;
+}
+
+export interface QueryFilterRequestV1 {
+	tableId: string;
+	filter: string;
+	projection?: string[];
+	limit?: number;
+	offset?: number;
+}
+
+export interface QueryResponseV1 {
+	chunk: DataChunk;
+	nextOffset?: number;
+}

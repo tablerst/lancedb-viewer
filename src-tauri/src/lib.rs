@@ -18,6 +18,9 @@ pub fn run() {
             commands::v1::open_table_v1,
             commands::v1::get_schema_v1,
             commands::v1::scan_v1,
+            commands::v1::query_filter_v1,
+            commands::v1::vector_search_v1,
+            commands::v1::fts_search_v1,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

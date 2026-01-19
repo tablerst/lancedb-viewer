@@ -260,3 +260,62 @@ pub struct ScanResponseV1 {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_offset: Option<usize>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VectorSearchRequestV1 {
+    pub table_id: String,
+    pub vector: Vec<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projection: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nprobes: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refine_factor: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FtsSearchRequestV1 {
+    pub table_id: String,
+    pub query: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub columns: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projection: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryFilterRequestV1 {
+    pub table_id: String,
+    pub filter: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projection: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryResponseV1 {
+    pub chunk: DataChunk,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<usize>,
+}

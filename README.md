@@ -9,6 +9,9 @@
 - 列出表：`list_tables_v1`
 - 打开表并查看 Schema：`open_table_v1`、`get_schema_v1`
 - 数据扫描（JSON）：`scan_v1`（Arrow 预留但未启用）
+- 资源浏览与数据闭环：Schema + 数据浏览（分页/列投影/过滤表达式）
+- 路由分区布局：资源浏览 / 检索工作台（占位）
+- 查询命令（后端可用）：`query_filter_v1`、`vector_search_v1`、`fts_search_v1`
 
 ## IPC v1 约定（JSON-first）
 
@@ -31,7 +34,12 @@
 - 安装依赖：`bun install`
 - 前端开发：`npm run dev`
 - 桌面联调：`npm run tauri dev`
+- 运行测试：`npm run test`
 - 代码格式化：`npm run format`
+
+### Rust 后端测试
+
+- 执行：`cargo test --manifest-path src-tauri/Cargo.toml`
 
 ## 安全与权限
 

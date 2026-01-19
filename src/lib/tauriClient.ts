@@ -3,12 +3,16 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
 	ConnectProfile,
 	ConnectResponseV1,
+	FtsSearchRequestV1,
 	ListTablesResponseV1,
+	QueryFilterRequestV1,
+	QueryResponseV1,
 	ResultEnvelope,
 	ScanRequestV1,
 	ScanResponseV1,
 	SchemaDefinition,
 	TableHandle,
+	VectorSearchRequestV1,
 } from "../ipc/v1";
 
 async function invokeV1<T>(command: string, payload: unknown): Promise<ResultEnvelope<T>> {
@@ -44,4 +48,22 @@ export async function getSchemaV1(tableId: string): Promise<ResultEnvelope<Schem
 
 export async function scanV1(request: ScanRequestV1): Promise<ResultEnvelope<ScanResponseV1>> {
 	return invokeV1("scan_v1", request);
+}
+
+export async function queryFilterV1(
+	request: QueryFilterRequestV1,
+): Promise<ResultEnvelope<QueryResponseV1>> {
+	return invokeV1("query_filter_v1", request);
+}
+
+export async function vectorSearchV1(
+	request: VectorSearchRequestV1,
+): Promise<ResultEnvelope<QueryResponseV1>> {
+	return invokeV1("vector_search_v1", request);
+}
+
+export async function ftsSearchV1(
+	request: FtsSearchRequestV1,
+): Promise<ResultEnvelope<QueryResponseV1>> {
+	return invokeV1("fts_search_v1", request);
 }
