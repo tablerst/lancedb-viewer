@@ -44,6 +44,7 @@ Use the project root unless noted.
 
 ## Code style
 ### General
+- Commits in English; present tense.
 - Prefer small, focused commits and functions.
 - Keep user-visible errors friendly and actionable.
 - Avoid new dependencies without a good reason.

@@ -20,9 +20,15 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-store = "2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 lancedb = "0.23.1"
 log = "0.4.29"
 backtrace = "0.3.76"
+arrow-array = "56.2.0"
+arrow-schema = "56.2.0"
+arrow-json = "56.2.0"
+futures-util = "0.3"
+uuid = { version = "1.10.0", features = ["v4"] }
 

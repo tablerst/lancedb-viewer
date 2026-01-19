@@ -1,7 +1,51 @@
-# Tauri + Vue + TypeScript
+# LanceDB Viewer (LanceDB Studio)
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+基于 Tauri v2 + Vue 3 + Rust 的 LanceDB 桌面可视化工具。当前版本以 JSON 为主的 IPC v1 打通连接与 Schema 预览，同时保留后续 Arrow IPC 的扩展位。
 
-## Recommended IDE Setup
+## 当前能力
 
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- 连接档案（profiles）持久化：`name`、`uri`、`storageOptions`
+- 连接 LanceDB：`connect_v1`
+- 列出表：`list_tables_v1`
+- 打开表并查看 Schema：`open_table_v1`、`get_schema_v1`
+- 数据扫描（JSON）：`scan_v1`（Arrow 预留但未启用）
+
+## IPC v1 约定（JSON-first）
+
+- 所有命令返回 `ResultEnvelope<T>`，包含 `apiVersion` 与 `ok` 标记
+- 扫描数据通过 `DataChunk` 返回：当前仅 `format: "json"`
+- `format: "arrow"` 保留为升级入口，不破坏 v1
+
+## 连接档案结构
+
+`ConnectProfile`（前端/后端对齐）：
+
+- `name`: 显示名
+- `uri`: `/path/to/db`、`s3://bucket/path`、`db://host:port` 等
+- `storageOptions`: 作为扩展键值对传入 LanceDB（与官方文档一致）
+- `options.readConsistencyIntervalSeconds`: 读取一致性间隔（可选）
+- `auth`: 预留字段（后续 Stronghold 接入）
+
+## 开发
+
+- 安装依赖：`bun install`
+- 前端开发：`npm run dev`
+- 桌面联调：`npm run tauri dev`
+- 代码格式化：`npm run format`
+
+## 安全与权限
+
+当前 `capabilities/default.json` 开启：
+
+- `core:default`
+- `opener:default`
+- `store:default`
+
+敏感凭证尚未落盘，后续会接入 Stronghold 并扩展 `auth` 字段。
+
+## 参考文档
+
+- LanceDB connect/URI：https://lancedb.github.io/lancedb/js/functions/connect/
+- LanceDB storage options：https://docs.lancedb.com/storage/configuration
+- Tauri Store 插件：https://v2.tauri.app/plugin/store/
+- Tauri Stronghold 插件：https://v2.tauri.app/plugin/stronghold/
