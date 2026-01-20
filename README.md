@@ -57,7 +57,9 @@
 
 ### Rust 后端测试
 
+- 集成测试目录：`src-tauri/tests/`
 - 执行：`cargo test --manifest-path src-tauri/Cargo.toml`
+- 测试默认优先使用仓库根目录的 `sample-db`；若不存在，会自动生成临时库
 
 ### 示例数据库
 

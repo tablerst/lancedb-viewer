@@ -1,8 +1,8 @@
 mod commands;
 mod domain;
-mod ipc;
-mod services;
-mod state;
+pub mod ipc;
+pub mod services;
+pub mod state;
 
 use log::LevelFilter;
 use tauri_plugin_log::{Target, TargetKind};

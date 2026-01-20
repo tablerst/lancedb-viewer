@@ -247,57 +247,67 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 
 		<NModal
 			v-model:show="isCreateModalOpen"
-			preset="card"
-			title="新建连接"
 			:to="'body'"
 			:style="{ width: '520px' }"
 		>
-			<div class="space-y-3">
-				<div class="space-y-1">
-					<label class="text-xs text-slate-500">连接名称</label>
-					<NInput v-model:value="profileForm.name" placeholder="例如：本地样例库" />
-				</div>
-				<div class="space-y-1">
-					<label class="text-xs text-slate-500">URI</label>
-					<div class="flex items-center gap-2">
+			<NCard title="新建连接" size="small" class="shadow-sm">
+				<div class="space-y-3">
+					<div class="space-y-1">
+						<label class="text-xs text-slate-500">连接名称</label>
+						<NInput v-model:value="profileForm.name" placeholder="例如：本地样例库" />
+					</div>
+					<div class="space-y-1">
+						<label class="text-xs text-slate-500">URI</label>
+						<div class="flex items-center gap-2">
+							<NInput
+								v-model:value="profileForm.uri"
+								class="flex-1"
+								:placeholder="uriPlaceholder"
+							/>
+							<NButton
+								v-if="showLocalPicker"
+								size="small"
+								quaternary
+								@click="pickLocalFolder"
+							>
+								<FolderOpen class="h-4 w-4" />
+								<span class="ml-1">选择文件夹</span>
+							</NButton>
+						</div>
+						<div v-if="showLocalPicker" class="text-xs text-slate-400">
+							选择 LanceDB 的数据库根目录（例如 sample-db）。如果误选了 items.lance 这类 *.lance 目录，会自动改用它的上级目录。
+						</div>
+					</div>
+					<div class="space-y-1">
+						<label class="text-xs text-slate-500">storageOptions (JSON)</label>
 						<NInput
-							v-model:value="profileForm.uri"
-							class="flex-1"
-							:placeholder="uriPlaceholder"
+							v-model:value="profileForm.storageOptionsJson"
+							type="textarea"
+							:autosize="{ minRows: 4, maxRows: 10 }"
+							placeholder='{"aws_region": "us-east-1"}'
 						/>
+					</div>
+
+					<div class="flex items-center justify-end gap-2 pt-2">
 						<NButton
-							v-if="showLocalPicker"
 							size="small"
 							quaternary
-							@click="pickLocalFolder"
+							:disabled="isSavingProfile"
+							@click="closeCreateModal"
 						>
-							<FolderOpen class="h-4 w-4" />
-							<span class="ml-1">选择文件夹</span>
+							取消
+						</NButton>
+						<NButton
+							size="small"
+							type="primary"
+							:loading="isSavingProfile"
+							@click="saveProfile"
+						>
+							保存
 						</NButton>
 					</div>
-					<div v-if="showLocalPicker" class="text-xs text-slate-400">
-						选择 LanceDB 的数据库根目录（例如 sample-db）。如果误选了 items.lance 这类 *.lance 目录，会自动改用它的上级目录。
-					</div>
 				</div>
-				<div class="space-y-1">
-					<label class="text-xs text-slate-500">storageOptions (JSON)</label>
-					<NInput
-						v-model:value="profileForm.storageOptionsJson"
-						type="textarea"
-						:autosize="{ minRows: 4, maxRows: 10 }"
-						placeholder='{"aws_region": "us-east-1"}'
-					/>
-				</div>
-
-				<div class="flex items-center justify-end gap-2 pt-2">
-					<NButton size="small" quaternary :disabled="isSavingProfile" @click="closeCreateModal">
-						取消
-					</NButton>
-					<NButton size="small" type="primary" :loading="isSavingProfile" @click="saveProfile">
-						保存
-					</NButton>
-				</div>
-			</div>
+			</NCard>
 		</NModal>
 	</aside>
 </template>

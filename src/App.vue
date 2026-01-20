@@ -97,7 +97,7 @@ const activeConnectionSummary = computed<{
 		}
 	}
 	const kind = getConnectionKind(activeProfile.value.uri)
-	const connected = Boolean(activeConnection.value?.connectionId.value)
+	const connected = Boolean(connectionId.value)
 	return {
 		label: activeProfile.value.name,
 		connected,

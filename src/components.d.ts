@@ -5,29 +5,29 @@
 export {}
 
 /* prettier-ignore */
-declare module "vue" {
-	export interface GlobalComponents {
-		ConnectionItem: typeof import("./components/sidebar/ConnectionItem.vue")["default"]
-		NAlert: typeof import("naive-ui")["NAlert"]
-		NButton: typeof import("naive-ui")["NButton"]
-		NCard: typeof import("naive-ui")["NCard"]
-		NConfigProvider: typeof import("naive-ui")["NConfigProvider"]
-		NDataTable: typeof import("naive-ui")["NDataTable"]
-		NEmpty: typeof import("naive-ui")["NEmpty"]
-		NGlobalStyle: typeof import("naive-ui")["NGlobalStyle"]
-		NInput: typeof import("naive-ui")["NInput"]
-		NInputNumber: typeof import("naive-ui")["NInputNumber"]
-		NModal: typeof import("naive-ui")["NModal"]
-		NPopover: typeof import("naive-ui")["NPopover"]
-		NRadioButton: typeof import("naive-ui")["NRadioButton"]
-		NRadioGroup: typeof import("naive-ui")["NRadioGroup"]
-		NSelect: typeof import("naive-ui")["NSelect"]
-		NTabPane: typeof import("naive-ui")["NTabPane"]
-		NTabs: typeof import("naive-ui")["NTabs"]
-		NTag: typeof import("naive-ui")["NTag"]
-		NVirtualList: typeof import("naive-ui")["NVirtualList"]
-		RouterLink: typeof import("vue-router")["RouterLink"]
-		RouterView: typeof import("vue-router")["RouterView"]
-		Sidebar: typeof import("./components/sidebar/Sidebar.vue")["default"]
-	}
+declare module 'vue' {
+  export interface GlobalComponents {
+    ConnectionItem: typeof import('./components/sidebar/ConnectionItem.vue')['default']
+    NAlert: typeof import('naive-ui')['NAlert']
+    NButton: typeof import('naive-ui')['NButton']
+    NCard: typeof import('naive-ui')['NCard']
+    NConfigProvider: typeof import('naive-ui')['NConfigProvider']
+    NDataTable: typeof import('naive-ui')['NDataTable']
+    NEmpty: typeof import('naive-ui')['NEmpty']
+    NGlobalStyle: typeof import('naive-ui')['NGlobalStyle']
+    NInput: typeof import('naive-ui')['NInput']
+    NInputNumber: typeof import('naive-ui')['NInputNumber']
+    NModal: typeof import('naive-ui')['NModal']
+    NPopover: typeof import('naive-ui')['NPopover']
+    NRadioButton: typeof import('naive-ui')['NRadioButton']
+    NRadioGroup: typeof import('naive-ui')['NRadioGroup']
+    NSelect: typeof import('naive-ui')['NSelect']
+    NTabPane: typeof import('naive-ui')['NTabPane']
+    NTabs: typeof import('naive-ui')['NTabs']
+    NTag: typeof import('naive-ui')['NTag']
+    NVirtualList: typeof import('naive-ui')['NVirtualList']
+    RouterLink: typeof import('vue-router')['RouterLink']
+    RouterView: typeof import('vue-router')['RouterView']
+    Sidebar: typeof import('./components/sidebar/Sidebar.vue')['default']
+  }
 }
