@@ -1,59 +1,59 @@
-export type ConnectionKind = "local" | "s3" | "gcs" | "azure" | "remote" | "unknown";
+export type ConnectionKind = "local" | "s3" | "gcs" | "azure" | "remote" | "unknown"
 
 export function getConnectionKind(uri: string): ConnectionKind {
-	const normalized = uri.trim().toLowerCase();
+	const normalized = uri.trim().toLowerCase()
 	if (normalized.startsWith("file://")) {
-		return "local";
+		return "local"
 	}
 	if (normalized.startsWith("s3://")) {
-		return "s3";
+		return "s3"
 	}
 	if (normalized.startsWith("s3+ddb://")) {
-		return "s3";
+		return "s3"
 	}
 	if (normalized.startsWith("gs://")) {
-		return "gcs";
+		return "gcs"
 	}
 	if (normalized.startsWith("az://") || normalized.startsWith("azure://")) {
-		return "azure";
+		return "azure"
 	}
 	if (normalized.startsWith("db://")) {
-		return "remote";
+		return "remote"
 	}
 	if (normalized.includes("://")) {
-		return "unknown";
+		return "unknown"
 	}
-	return "local";
+	return "local"
 }
 
 export function getConnectionKindLabel(kind: ConnectionKind) {
 	switch (kind) {
 		case "local":
-			return "Local";
+			return "Local"
 		case "s3":
-			return "S3";
+			return "S3"
 		case "gcs":
-			return "GCS";
+			return "GCS"
 		case "azure":
-			return "Azure";
+			return "Azure"
 		case "remote":
-			return "Remote";
+			return "Remote"
 		default:
-			return "Unknown";
+			return "Unknown"
 	}
 }
 
 export function getConnectionKindTagType(kind: ConnectionKind) {
 	switch (kind) {
 		case "local":
-			return "success";
+			return "success"
 		case "s3":
 		case "gcs":
 		case "azure":
-			return "info";
+			return "info"
 		case "remote":
-			return "warning";
+			return "warning"
 		default:
-			return "default";
+			return "default"
 	}
 }

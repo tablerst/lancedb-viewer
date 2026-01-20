@@ -1,7 +1,7 @@
-import { createRouter, createWebHashHistory } from "vue-router";
+import { createRouter, createWebHashHistory } from "vue-router"
 
-import ExplorerView from "./views/ExplorerView.vue";
-import SearchView from "./views/SearchView.vue";
+import ExplorerView from "./views/ExplorerView.vue"
+import SearchView from "./views/SearchView.vue"
 
 export const router = createRouter({
 	history: createWebHashHistory(),
@@ -9,4 +9,4 @@ export const router = createRouter({
 		{ path: "/", name: "explorer", component: ExplorerView },
 		{ path: "/search", name: "search", component: SearchView },
 	],
-});
+})

@@ -20,22 +20,22 @@ Use the project root unless noted.
 
 ### Install
 - `bun install` (preferred; lockfile present)
-- or `npm install` if you must, but keep lockfiles stable
+- Do not use `npm install` / `pnpm install` / `yarn` in this repo (keep `bun.lock` stable)
 
 ### Frontend (Vite)
-- `npm run dev` start Vite dev server
-- `npm run build` typecheck + build (runs `vue-tsc --noEmit`)
-- `npm run preview` preview production build
+- `bun dev` start Vite dev server
+- `bun build` typecheck + build (runs `vue-tsc --noEmit`)
+- `bun preview` preview production build
 
 ### Tauri (desktop)
-- `npm run tauri dev` run desktop app in dev mode
-- `npm run tauri build` build desktop app
+- `bun tauri dev` run desktop app in dev mode
+- `bun tauri build` build desktop app
 
 ### Lint/format (Biome)
-- `npm run format` format all supported files (writes)
-- `npm run lint` lint + auto-fix (writes)
-- `npm run check` format + lint (writes)
-- `npm run ci` CI check (no writes)
+- `bun format` format all supported files (writes)
+- `bun lint` lint + auto-fix (writes)
+- `bun check` format + lint (writes)
+- `bun ci` CI check (no writes)
 
 ### Rust backend (`src-tauri`)
 - `cargo build --manifest-path src-tauri/Cargo.toml`
@@ -104,13 +104,14 @@ Use the project root unless noted.
 
 ## Suggested workflow
 1. `bun install`
-2. `npm run dev` for frontend-only changes.
-3. `npm run tauri dev` for desktop integration.
-4. `npm run lint` before committing.
+2. `bun dev` for frontend-only changes.
+3. `bun tauri dev` for desktop integration.
+4. After frontend changes, run `bun lint` or `bun check` to catch issues early.
 
 ## When editing
 - Keep changes scoped; avoid reformatting unrelated files.
 - Update types when adding new fields or IPC payloads.
+- After frontend code changes, promptly run `bun lint` or `bun check` and fix issues before moving on.
 - If you add new commands, document them and keep names stable.
 - If you add new env vars, document them in README and sample files.
 

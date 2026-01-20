@@ -1,131 +1,131 @@
-export type ApiVersion = "v1";
+export type ApiVersion = "v1"
 
-export type ErrorCode = "invalid_argument" | "not_found" | "internal" | "not_implemented";
+export type ErrorCode = "invalid_argument" | "not_found" | "internal" | "not_implemented"
 
 export interface ErrorEnvelope {
-	code: ErrorCode;
-	message: string;
-	details?: unknown;
+	code: ErrorCode
+	message: string
+	details?: unknown
 }
 
 export interface ResultEnvelope<T> {
-	apiVersion: ApiVersion;
-	ok: boolean;
-	data?: T;
-	error?: ErrorEnvelope;
+	apiVersion: ApiVersion
+	ok: boolean
+	data?: T
+	error?: ErrorEnvelope
 }
 
-export type DataFormat = "json" | "arrow";
+export type DataFormat = "json" | "arrow"
 
 export type AuthDescriptor =
 	| { type: "none" }
 	| { type: "inline"; provider: string; params: Record<string, string> }
-	| { type: "secret_ref"; provider: string; reference: string };
+	| { type: "secret_ref"; provider: string; reference: string }
 
 export interface ConnectOptions {
-	readConsistencyIntervalSeconds?: number;
+	readConsistencyIntervalSeconds?: number
 }
 
 export interface ConnectProfile {
-	name: string;
-	uri: string;
-	storageOptions?: Record<string, string>;
-	options?: ConnectOptions;
-	auth?: AuthDescriptor;
+	name: string
+	uri: string
+	storageOptions?: Record<string, string>
+	options?: ConnectOptions
+	auth?: AuthDescriptor
 }
 
-export type BackendKind = "local" | "s3" | "gcs" | "azure" | "remote" | "unknown";
+export type BackendKind = "local" | "s3" | "gcs" | "azure" | "remote" | "unknown"
 
 export interface ConnectResponseV1 {
-	connectionId: string;
-	backendKind: BackendKind;
-	name: string;
-	uri: string;
+	connectionId: string
+	backendKind: BackendKind
+	name: string
+	uri: string
 }
 
 export interface TableInfo {
-	name: string;
+	name: string
 }
 
 export interface ListTablesResponseV1 {
-	tables: TableInfo[];
+	tables: TableInfo[]
 }
 
 export interface TableHandle {
-	tableId: string;
-	name: string;
+	tableId: string
+	name: string
 }
 
 export interface SchemaField {
-	name: string;
-	dataType: string;
-	nullable: boolean;
-	metadata?: Record<string, string>;
+	name: string
+	dataType: string
+	nullable: boolean
+	metadata?: Record<string, string>
 }
 
 export interface SchemaDefinition {
-	fields: SchemaField[];
+	fields: SchemaField[]
 }
 
 export interface ScanRequestV1 {
-	tableId: string;
-	format?: DataFormat;
-	projection?: string[];
-	filter?: string;
-	limit?: number;
-	offset?: number;
+	tableId: string
+	format?: DataFormat
+	projection?: string[]
+	filter?: string
+	limit?: number
+	offset?: number
 }
 
 export type DataChunk =
 	| {
-			format: "json";
-			rows: unknown[];
-			schema: SchemaDefinition;
-			offset: number;
-			limit: number;
+			format: "json"
+			rows: unknown[]
+			schema: SchemaDefinition
+			offset: number
+			limit: number
 	  }
 	| {
-			format: "arrow";
-			ipcBase64: string;
-			compression?: string;
-	  };
+			format: "arrow"
+			ipcBase64: string
+			compression?: string
+	  }
 
 export interface ScanResponseV1 {
-	chunk: DataChunk;
-	nextOffset?: number;
+	chunk: DataChunk
+	nextOffset?: number
 }
 
 export interface VectorSearchRequestV1 {
-	tableId: string;
-	vector: number[];
-	column?: string;
-	topK?: number;
-	projection?: string[];
-	filter?: string;
-	nprobes?: number;
-	refineFactor?: number;
-	offset?: number;
+	tableId: string
+	vector: number[]
+	column?: string
+	topK?: number
+	projection?: string[]
+	filter?: string
+	nprobes?: number
+	refineFactor?: number
+	offset?: number
 }
 
 export interface FtsSearchRequestV1 {
-	tableId: string;
-	query: string;
-	columns?: string[];
-	limit?: number;
-	offset?: number;
-	projection?: string[];
-	filter?: string;
+	tableId: string
+	query: string
+	columns?: string[]
+	limit?: number
+	offset?: number
+	projection?: string[]
+	filter?: string
 }
 
 export interface QueryFilterRequestV1 {
-	tableId: string;
-	filter: string;
-	projection?: string[];
-	limit?: number;
-	offset?: number;
+	tableId: string
+	filter: string
+	projection?: string[]
+	limit?: number
+	offset?: number
 }
 
 export interface QueryResponseV1 {
-	chunk: DataChunk;
-	nextOffset?: number;
+	chunk: DataChunk
+	nextOffset?: number
 }

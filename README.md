@@ -2,7 +2,7 @@
 
 基于 Tauri v2 + Vue 3 + Rust 的 LanceDB 桌面可视化工具。当前版本以 JSON 为主的 IPC v1 打通连接与 Schema 预览，同时保留后续 Arrow IPC 的扩展位。
 
-近期目标：重构前端信息架构为“**左侧可收缩侧边栏 + 右侧正文工作区**”，支持**多连接并行**、列表虚拟化、并用 GSAP/Lucide 提升交互与视觉一致性。
+近期目标：重构前端信息架构为“**左侧可收缩侧边栏 + 右侧正文工作区**”，支持**多连接并行**、列表虚拟化，并用 TailwindCSS（CSS Transition/Animation）/Lucide 提升交互与视觉一致性。
 
 ## 当前能力
 
@@ -28,7 +28,7 @@
 	- 选中表：展示 Schema + 数据表格，并支持搜索/过滤/列投影/分页
 	- 排序策略（MVP）：仅做前端排序（对当前已加载的数据片段排序）
 
-动效与图标：使用 `gsap` 做折叠/展开与局部过渡；图标统一使用 `lucide-vue-next`。
+动效与图标：动效使用 TailwindCSS（如 `transition-*` / `duration-*` / `ease-*`）实现折叠/展开与局部过渡；图标统一使用 `lucide-vue-next`。
 
 ## IPC v1 约定（JSON-first）
 
@@ -49,10 +49,11 @@
 ## 开发
 
 - 安装依赖：`bun install`
-- 前端开发：`npm run dev`
-- 桌面联调：`npm run tauri dev`
-- 运行测试：`npm run test`
-- 代码格式化：`npm run format`
+- 前端开发：`bun dev`
+- 桌面联调：`bun tauri dev`
+- 运行测试：`bun run test`（避免与 Bun 内置 `bun test` 语义混淆）
+- 代码格式化：`bun format`
+- 前端代码调整完成后：及时运行 `bun lint` 或 `bun check` 查看是否有错误（需要纯检查可用 `bun ci`）
 
 ### Rust 后端测试
 
@@ -80,7 +81,7 @@
 
 ## Roadmap
 
-- UI Shell：可收缩 Sidebar + 右侧正文（多连接并行、虚拟列表、GSAP 动效、Lucide 图标）
+- UI Shell：可收缩 Sidebar + 右侧正文（多连接并行、虚拟列表、TailwindCSS 动效、Lucide 图标）
 - Search 工作台：前端接入 `query_filter_v1` / `vector_search_v1` / `fts_search_v1`，并复用结果表格能力
 - Data Explorer：补齐“前端排序/列宽/列固定/快捷筛选”等常用交互（对齐 DBeaver 类体验）
 - Arrow IPC：`scan_v1` 已启用，后续扩展到查询结果

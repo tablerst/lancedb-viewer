@@ -4,9 +4,9 @@
 
 - 指导后续页面/组件的实现与重构
 - 保证交互一致性（侧边栏、连接卡片、表格操作）
-- 为动效（GSAP）与图标（Lucide）提供统一约束
+- 为动效（TailwindCSS / CSS Transition）与图标（Lucide）提供统一约束
 
-> 技术栈：Vue 3 + TypeScript + Naive UI + Tailwind + GSAP + Lucide
+> 技术栈：Vue 3 + TypeScript + Naive UI + Tailwind + Lucide
 
 ---
 
@@ -188,27 +188,32 @@ Sidebar 由上到下：
 
 ---
 
-## 8. 动效（GSAP）规范
+## 8. 动效（TailwindCSS）规范
 
 ### 8.1 使用范围
 
 - ✅ 允许：
-  - Sidebar 宽度折叠/展开
-  - 连接项“表列表”展开/收起（高度动画）
-  - 小范围淡入淡出（例如过滤面板弹出）
+  - Sidebar 宽度折叠/展开（CSS transition width）
+  - 连接项“表列表”展开/收起（CSS transition height）
+  - 小范围淡入淡出（CSS transition opacity）
 - ❌ 避免：
   - 对右侧大表格区域做大幅动画（容易卡顿/重排）
 
 ### 8.2 参数建议（统一手感）
 
-- Sidebar 宽度：`duration 0.25`，`ease power2.out`
-- 展开/收起：`duration 0.2`，`ease power2.out`
+统一使用 TailwindCSS 的过渡工具类，避免在 WebView 内引入额外动画运行时。
+
+- Sidebar 宽度：`transition-[width] duration-[250ms] ease-out`
+- 展开/收起：`transition-[height] duration-200 ease-out`
+- 淡入淡出：`transition-opacity duration-150 ease-out`
+
+> 说明：能用 `transform/opacity` 的动画优先用它们；仅在必要时（Sidebar 宽度、折叠面板高度）使用 `width/height` 过渡。
 
 ### 8.3 可维护性要求
 
-- 动画触发点尽量集中在组件内部
-- 任何依赖 DOM 尺寸的动画需 `nextTick()` 后再启动
-- 后续如引入更多动画，建议使用 `gsap.context()` 以便卸载清理
+- 动效由“状态（ref/computed）→ class/style 绑定”驱动，避免手动操作 DOM
+- 依赖尺寸的过渡：尽量使用明确的像素高度（例如表列表 `min(行数 * 行高, maxHeight)`）
+- 动效实现应可被 Biome/TS 静态检查覆盖（不依赖运行时注入）
 
 ---
 
@@ -259,7 +264,7 @@ Sidebar 由上到下：
 - 组件统一使用 `<script setup lang="ts">`
 - TypeScript `strict`：避免 `any`，优先 `unknown` 并做 narrowing
 - Tailwind 仅用于布局/间距/字体颜色等“轻量样式”；复杂交互依赖 Naive 组件
-- 大改动前后都需要跑 `npm run lint`（Biome）与 `npm run build`
+- 前端代码调整完成后，及时跑 `bun lint` 或 `bun check` 来发现问题；大改动前后都需要跑 `bun lint`（Biome）与 `bun build`
 
 ---
 
@@ -318,7 +323,7 @@ Sidebar 由上到下：
 - [ ] 空态/加载态/错误态齐全
 - [ ] 动效不影响正文主区域性能（避免大面积 reflow）
 - [ ] 列表规模大时仍流畅（虚拟化开启、滚动不抖）
-- [ ] 通过 `npm run lint` 与 `npm run build`
+- [ ] 通过 `bun lint`（或 `bun check`）与 `bun build`
 
 ---
 

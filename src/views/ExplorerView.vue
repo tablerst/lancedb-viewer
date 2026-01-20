@@ -1,21 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import type { DataTableColumns, SelectOption } from "naive-ui";
+import type { DataTableColumns, SelectOption } from "naive-ui"
+import { computed, ref, watch } from "vue"
+import { useWorkspace } from "../composables/workspaceContext"
+import type { SchemaField } from "../ipc/v1"
+import { formatCellValue, normalizeRow } from "../lib/formatters.ts"
+import { scanV1, unwrapEnvelope } from "../lib/tauriClient"
 
-import type { SchemaField } from "../ipc/v1";
-import { scanV1, unwrapEnvelope } from "../lib/tauriClient";
-import { formatCellValue, normalizeRow } from "../lib/formatters.ts";
-import { useWorkspace } from "../composables/workspaceContext";
-
-const {
-	activeTableName,
-	activeTableId,
-	schema,
-	isOpening,
-	setError,
-	setStatus,
-	clearMessages,
-} = useWorkspace();
+const { activeTableName, activeTableId, schema, isOpening, setError, setStatus, clearMessages } =
+	useWorkspace()
 
 const schemaColumns: DataTableColumns<SchemaField> = [
 	{ title: "字段", key: "name" },
@@ -25,45 +17,45 @@ const schemaColumns: DataTableColumns<SchemaField> = [
 		key: "nullable",
 		render: (row) => (row.nullable ? "是" : "否"),
 	},
-];
+]
 
-const schemaData = computed(() => schema.value?.fields ?? []);
-const allFieldNames = computed(() => schema.value?.fields.map((field) => field.name) ?? []);
+const schemaData = computed(() => schema.value?.fields ?? [])
+const allFieldNames = computed(() => schema.value?.fields.map((field) => field.name) ?? [])
 const columnOptions = computed<SelectOption[]>(() =>
-	allFieldNames.value.map((name) => ({ label: name, value: name })),
-);
+	allFieldNames.value.map((name) => ({ label: name, value: name }))
+)
 
-const selectedColumns = ref<string[]>([]);
-const limit = ref(50);
-const offset = ref(0);
-const filterExpression = ref("");
+const selectedColumns = ref<string[]>([])
+const limit = ref(50)
+const offset = ref(0)
+const filterExpression = ref("")
 
-const isScanning = ref(false);
-const scanError = ref("");
-const dataRows = ref<unknown[]>([]);
-const nextOffset = ref<number | null>(null);
+const isScanning = ref(false)
+const scanError = ref("")
+const dataRows = ref<unknown[]>([])
+const nextOffset = ref<number | null>(null)
 
 const visibleColumns = computed(() =>
-	selectedColumns.value.length ? selectedColumns.value : allFieldNames.value,
-);
-const hasActiveTable = computed(() => Boolean(activeTableId.value));
+	selectedColumns.value.length ? selectedColumns.value : allFieldNames.value
+)
+const hasActiveTable = computed(() => Boolean(activeTableId.value))
 
 function compareValues(a: unknown, b: unknown) {
 	if (a === b) {
-		return 0;
+		return 0
 	}
 	if (a === null || a === undefined) {
-		return -1;
+		return -1
 	}
 	if (b === null || b === undefined) {
-		return 1;
+		return 1
 	}
-	const numA = typeof a === "number" ? a : Number(a);
-	const numB = typeof b === "number" ? b : Number(b);
+	const numA = typeof a === "number" ? a : Number(a)
+	const numB = typeof b === "number" ? b : Number(b)
 	if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
-		return numA - numB;
+		return numA - numB
 	}
-	return String(a).localeCompare(String(b));
+	return String(a).localeCompare(String(b))
 }
 
 const tableColumns = computed<DataTableColumns<Record<string, unknown>>>(() =>
@@ -72,48 +64,48 @@ const tableColumns = computed<DataTableColumns<Record<string, unknown>>>(() =>
 		key: name,
 		sorter: (rowA, rowB) => compareValues(rowA[name], rowB[name]),
 		render: (row) => formatCellValue(row[name]),
-	})),
-);
+	}))
+)
 
 const tableData = computed(() =>
 	dataRows.value.map((row, index) => ({
 		__rowId: `${offset.value + index}`,
 		...normalizeRow(row),
-	})),
-);
+	}))
+)
 
 watch(schema, () => {
-	selectedColumns.value = allFieldNames.value;
-});
+	selectedColumns.value = allFieldNames.value
+})
 
 watch(activeTableId, () => {
-	offset.value = 0;
-	dataRows.value = [];
-	nextOffset.value = null;
-	scanError.value = "";
-	clearMessages();
+	offset.value = 0
+	dataRows.value = []
+	nextOffset.value = null
+	scanError.value = ""
+	clearMessages()
 	if (activeTableId.value) {
-		void runScan();
+		void runScan()
 	}
-});
+})
 
 function selectAllColumns() {
-	selectedColumns.value = allFieldNames.value;
+	selectedColumns.value = allFieldNames.value
 }
 
 function clearColumns() {
-	selectedColumns.value = [];
+	selectedColumns.value = []
 }
 
 async function runScan() {
-	const tableId = activeTableId.value;
+	const tableId = activeTableId.value
 	if (!tableId || isScanning.value) {
-		return;
+		return
 	}
 
 	try {
-		isScanning.value = true;
-		scanError.value = "";
+		isScanning.value = true
+		scanError.value = ""
 		const response = unwrapEnvelope(
 			await scanV1({
 				tableId,
@@ -122,40 +114,40 @@ async function runScan() {
 				filter: filterExpression.value.trim() || undefined,
 				limit: limit.value,
 				offset: offset.value,
-			}),
-		);
+			})
+		)
 
 		if (response.chunk.format !== "json") {
-			scanError.value = "当前仅支持 JSON 数据块";
-			return;
+			scanError.value = "当前仅支持 JSON 数据块"
+			return
 		}
 
-		dataRows.value = response.chunk.rows;
-		nextOffset.value = response.nextOffset ?? null;
-		setStatus(`已加载 ${response.chunk.rows.length} 行数据`);
+		dataRows.value = response.chunk.rows
+		nextOffset.value = response.nextOffset ?? null
+		setStatus(`已加载 ${response.chunk.rows.length} 行数据`)
 	} catch (error) {
-		const message = error instanceof Error ? error.message : "扫描数据失败";
-		scanError.value = message;
-		setError(message);
+		const message = error instanceof Error ? error.message : "扫描数据失败"
+		scanError.value = message
+		setError(message)
 	} finally {
-		isScanning.value = false;
+		isScanning.value = false
 	}
 }
 
 function previousPage() {
 	if (offset.value === 0 || isScanning.value) {
-		return;
+		return
 	}
-	offset.value = Math.max(0, offset.value - limit.value);
-	void runScan();
+	offset.value = Math.max(0, offset.value - limit.value)
+	void runScan()
 }
 
 function nextPage() {
 	if (nextOffset.value === null || isScanning.value) {
-		return;
+		return
 	}
-	offset.value = nextOffset.value;
-	void runScan();
+	offset.value = nextOffset.value
+	void runScan()
 }
 </script>
 

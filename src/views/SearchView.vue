@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed } from "vue"
 
-import { useWorkspace } from "../composables/workspaceContext";
+import { useWorkspace } from "../composables/workspaceContext"
 
-const { activeTableName } = useWorkspace();
-const tableHint = computed(() => activeTableName.value ?? "尚未选择表");
+const { activeTableName } = useWorkspace()
+const tableHint = computed(() => activeTableName.value ?? "尚未选择表")
 </script>
 
 <template>

@@ -1,63 +1,64 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
-import gsap from "gsap";
-import { ChevronDown, ChevronRight, Plug, RefreshCcw, Table } from "lucide-vue-next";
+import { ChevronDown, ChevronRight, Plug, RefreshCcw, Table } from "lucide-vue-next"
+import { computed, ref, watch } from "vue"
 
-import type { ConnectionState } from "../../composables/useConnection";
-import type { StoredProfile } from "../../models/profile";
-import { getConnectionKind, getConnectionKindLabel, getConnectionKindTagType } from "../../lib/connectionKind";
+import type { ConnectionState } from "../../composables/useConnection"
+import {
+	getConnectionKind,
+	getConnectionKindLabel,
+	getConnectionKindTagType,
+} from "../../lib/connectionKind"
+import type { StoredProfile } from "../../models/profile"
 
 const props = defineProps<{
-	profile: StoredProfile;
-	state: ConnectionState;
-	selected: boolean;
-	collapsed: boolean;
-}>();
+	profile: StoredProfile
+	state: ConnectionState
+	selected: boolean
+	collapsed: boolean
+}>()
 
 const emit = defineEmits<{
-	(e: "select"): void;
-	(e: "connect"): void;
-	(e: "refresh"): void;
-	(e: "open-table", name: string): void;
-}>();
+	(e: "select"): void
+	(e: "connect"): void
+	(e: "refresh"): void
+	(e: "open-table", name: string): void
+}>()
 
-const isConnected = computed(() => Boolean(props.state.connectionId.value));
-const isConnecting = computed(() => props.state.isConnecting.value);
-const isRefreshing = computed(() => props.state.isRefreshing.value);
-const tables = computed(() => props.state.tables.value);
-const activeTableName = computed(() => props.state.activeTableName.value);
-const kind = computed(() => getConnectionKind(props.profile.uri));
-const kindLabel = computed(() => getConnectionKindLabel(kind.value));
-const tagType = computed(() => getConnectionKindTagType(kind.value));
+const isConnected = computed(() => Boolean(props.state.connectionId.value))
+const isConnecting = computed(() => props.state.isConnecting.value)
+const isRefreshing = computed(() => props.state.isRefreshing.value)
+const tables = computed(() => props.state.tables.value)
+const activeTableName = computed(() => props.state.activeTableName.value)
+const kind = computed(() => getConnectionKind(props.profile.uri))
+const kindLabel = computed(() => getConnectionKindLabel(kind.value))
+const tagType = computed(() => getConnectionKindTagType(kind.value))
 
-const isExpanded = ref(true);
-const tableListRef = ref<HTMLDivElement | null>(null);
-const tableListHeight = computed(() => Math.min(tables.value.length * 32, 200));
+const isExpanded = ref(true)
+const tableListHeight = computed(() => Math.min(tables.value.length * 32, 200))
+const tableListContainerHeight = computed(() => {
+	if (!isConnected.value) {
+		return 0
+	}
+	if (!isExpanded.value) {
+		return 0
+	}
+	return tableListHeight.value
+})
 
 watch(
 	() => props.collapsed,
 	(collapsed) => {
 		if (collapsed) {
-			isExpanded.value = false;
+			isExpanded.value = false
 		}
-	},
-);
-
-watch([isExpanded, tableListHeight, isConnected], async ([expanded, height, connected]) => {
-	await nextTick();
-	const el = tableListRef.value;
-	if (!el) {
-		return;
 	}
-	const targetHeight = expanded && connected ? height : 0;
-	gsap.to(el, { height: targetHeight, duration: 0.2, ease: "power2.out" });
-});
+)
 
 function toggleExpanded() {
 	if (!isConnected.value) {
-		return;
+		return
 	}
-	isExpanded.value = !isExpanded.value;
+	isExpanded.value = !isExpanded.value
 }
 </script>
 
@@ -118,7 +119,10 @@ function toggleExpanded() {
 				<span v-if="!isConnected">未连接</span>
 				<span v-else>共 {{ tables.length }} 张</span>
 			</div>
-			<div ref="tableListRef" class="mt-2 overflow-hidden" style="height: 0;">
+			<div
+				class="mt-2 overflow-hidden transition-[height] duration-200 ease-out"
+				:style="{ height: `${tableListContainerHeight}px` }"
+			>
 				<NVirtualList
 					v-if="isConnected"
 					:items="tables"

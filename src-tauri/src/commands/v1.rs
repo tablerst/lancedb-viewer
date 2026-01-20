@@ -141,11 +141,10 @@ async fn execute_query_batches(query: impl ExecutableQuery) -> Result<Vec<Record
         .map_err(|error| error.to_string())
 }
 
-#[tauri::command]
-pub async fn connect_v1(
-    state: tauri::State<'_, AppState>,
+async fn connect_v1_impl(
+    state: &AppState,
     request: ConnectRequestV1,
-) -> Result<ResultEnvelope<ConnectResponseV1>, String> {
+) -> ResultEnvelope<ConnectResponseV1> {
     let started_at = Instant::now();
     let profile = request.profile;
     let backend_kind = infer_backend_kind(&profile.uri);
@@ -185,7 +184,7 @@ pub async fn connect_v1(
                 profile.uri,
                 error
             );
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error.to_string()));
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
 
@@ -193,10 +192,10 @@ pub async fn connect_v1(
         Ok(mut manager) => manager.insert_connection(connection),
         Err(_) => {
             error!("connect_v1 failed to lock connection manager");
-            return Ok(ResultEnvelope::err(
+            return ResultEnvelope::err(
                 ErrorCode::Internal,
                 "failed to lock connection manager",
-            ))
+            );
         }
     };
 
@@ -207,29 +206,36 @@ pub async fn connect_v1(
         started_at.elapsed().as_millis()
     );
 
-    Ok(ResultEnvelope::ok(ConnectResponseV1 {
+    ResultEnvelope::ok(ConnectResponseV1 {
         connection_id,
         backend_kind,
         name: profile.name,
         uri: profile.uri,
-    }))
+    })
 }
 
 #[tauri::command]
-pub async fn list_tables_v1(
+pub async fn connect_v1(
     state: tauri::State<'_, AppState>,
+    request: ConnectRequestV1,
+) -> Result<ResultEnvelope<ConnectResponseV1>, String> {
+    Ok(connect_v1_impl(state.inner(), request).await)
+}
+
+async fn list_tables_v1_impl(
+    state: &AppState,
     request: ListTablesRequestV1,
-) -> Result<ResultEnvelope<ListTablesResponseV1>, String> {
+) -> ResultEnvelope<ListTablesResponseV1> {
     let started_at = Instant::now();
     info!("list_tables_v1 start connection_id={}", request.connection_id);
     let connection = match state.connections.lock() {
         Ok(manager) => manager.get_connection(&request.connection_id),
         Err(_) => {
             error!("list_tables_v1 failed to lock connection manager");
-            return Ok(ResultEnvelope::err(
+            return ResultEnvelope::err(
                 ErrorCode::Internal,
                 "failed to lock connection manager",
-            ))
+            );
         }
     };
 
@@ -238,18 +244,18 @@ pub async fn list_tables_v1(
             "list_tables_v1 connection not found connection_id={}",
             request.connection_id
         );
-        return Ok(ResultEnvelope::err(ErrorCode::NotFound, "connection not found"));
+        return ResultEnvelope::err(ErrorCode::NotFound, "connection not found");
     };
 
     let names: Vec<String> = match connection.table_names().execute().await {
         Ok(names) => names,
         Err(error) => {
             error!(
-                "list_tables_v1 failed connection_id={} error={}",
+                "list_tables_v1 failed connection_id={} error={} ",
                 request.connection_id,
                 error
             );
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error.to_string()));
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
 
@@ -262,14 +268,21 @@ pub async fn list_tables_v1(
         started_at.elapsed().as_millis()
     );
 
-    Ok(ResultEnvelope::ok(ListTablesResponseV1 { tables }))
+    ResultEnvelope::ok(ListTablesResponseV1 { tables })
 }
 
 #[tauri::command]
-pub async fn open_table_v1(
+pub async fn list_tables_v1(
     state: tauri::State<'_, AppState>,
+    request: ListTablesRequestV1,
+) -> Result<ResultEnvelope<ListTablesResponseV1>, String> {
+    Ok(list_tables_v1_impl(state.inner(), request).await)
+}
+
+async fn open_table_v1_impl(
+    state: &AppState,
     request: OpenTableRequestV1,
-) -> Result<ResultEnvelope<TableHandle>, String> {
+) -> ResultEnvelope<TableHandle> {
     let started_at = Instant::now();
     info!(
         "open_table_v1 start connection_id={} table=\"{}\"",
@@ -280,10 +293,10 @@ pub async fn open_table_v1(
         Ok(manager) => manager.get_connection(&request.connection_id),
         Err(_) => {
             error!("open_table_v1 failed to lock connection manager");
-            return Ok(ResultEnvelope::err(
+            return ResultEnvelope::err(
                 ErrorCode::Internal,
                 "failed to lock connection manager",
-            ))
+            );
         }
     };
 
@@ -292,7 +305,7 @@ pub async fn open_table_v1(
             "open_table_v1 connection not found connection_id={}",
             request.connection_id
         );
-        return Ok(ResultEnvelope::err(ErrorCode::NotFound, "connection not found"));
+        return ResultEnvelope::err(ErrorCode::NotFound, "connection not found");
     };
 
     let table = match connection.open_table(&request.table_name).execute().await {
@@ -304,7 +317,7 @@ pub async fn open_table_v1(
                 request.table_name,
                 error
             );
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error.to_string()));
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
 
@@ -312,10 +325,7 @@ pub async fn open_table_v1(
         Ok(mut manager) => manager.insert_table(request.table_name.clone(), table),
         Err(_) => {
             error!("open_table_v1 failed to lock table manager");
-            return Ok(ResultEnvelope::err(
-                ErrorCode::Internal,
-                "failed to lock table manager",
-            ))
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock table manager");
         }
     };
 
@@ -327,44 +337,47 @@ pub async fn open_table_v1(
         started_at.elapsed().as_millis()
     );
 
-    Ok(ResultEnvelope::ok(TableHandle {
+    ResultEnvelope::ok(TableHandle {
         table_id,
         name: request.table_name,
-    }))
+    })
 }
 
 #[tauri::command]
-pub async fn get_schema_v1(
+pub async fn open_table_v1(
     state: tauri::State<'_, AppState>,
+    request: OpenTableRequestV1,
+) -> Result<ResultEnvelope<TableHandle>, String> {
+    Ok(open_table_v1_impl(state.inner(), request).await)
+}
+
+async fn get_schema_v1_impl(
+    state: &AppState,
     request: GetSchemaRequestV1,
-) -> Result<ResultEnvelope<SchemaDefinition>, String> {
+) -> ResultEnvelope<SchemaDefinition> {
     let started_at = Instant::now();
     info!("get_schema_v1 start table_id={}", request.table_id);
     let table = match state.connections.lock() {
         Ok(manager) => manager.get_table(&request.table_id),
         Err(_) => {
             error!("get_schema_v1 failed to lock connection manager");
-            return Ok(ResultEnvelope::err(
+            return ResultEnvelope::err(
                 ErrorCode::Internal,
                 "failed to lock connection manager",
-            ))
+            );
         }
     };
 
     let Some(table) = table else {
         warn!("get_schema_v1 table not found table_id={}", request.table_id);
-        return Ok(ResultEnvelope::err(ErrorCode::NotFound, "table not found"));
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let schema = match table.schema().await {
         Ok(schema) => schema,
         Err(error) => {
-            error!(
-                "get_schema_v1 failed table_id={} error={}",
-                request.table_id,
-                error
-            );
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error.to_string()));
+            error!("get_schema_v1 failed table_id={} error={}", request.table_id, error);
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
 
@@ -376,14 +389,18 @@ pub async fn get_schema_v1(
         started_at.elapsed().as_millis()
     );
 
-    Ok(ResultEnvelope::ok(definition))
+    ResultEnvelope::ok(definition)
 }
 
 #[tauri::command]
-pub async fn scan_v1(
+pub async fn get_schema_v1(
     state: tauri::State<'_, AppState>,
-    request: ScanRequestV1,
-) -> Result<ResultEnvelope<ScanResponseV1>, String> {
+    request: GetSchemaRequestV1,
+) -> Result<ResultEnvelope<SchemaDefinition>, String> {
+    Ok(get_schema_v1_impl(state.inner(), request).await)
+}
+
+async fn scan_v1_impl(state: &AppState, request: ScanRequestV1) -> ResultEnvelope<ScanResponseV1> {
     let started_at = Instant::now();
     info!(
         "scan_v1 start table_id={} format={:?} limit={:?} offset={:?}",
@@ -403,16 +420,16 @@ pub async fn scan_v1(
         Ok(manager) => manager.get_table(&request.table_id),
         Err(_) => {
             error!("scan_v1 failed to lock connection manager");
-            return Ok(ResultEnvelope::err(
+            return ResultEnvelope::err(
                 ErrorCode::Internal,
                 "failed to lock connection manager",
-            ))
+            );
         }
     };
 
     let Some(table) = table else {
         warn!("scan_v1 table not found table_id={}", request.table_id);
-        return Ok(ResultEnvelope::err(ErrorCode::NotFound, "table not found"));
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let limit = request.limit.unwrap_or(100);
@@ -425,7 +442,7 @@ pub async fn scan_v1(
         Ok(schema) => schema,
         Err(error) => {
             error!("scan_v1 failed to read schema table_id={} error={}", request.table_id, error);
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error.to_string()));
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
 
@@ -440,12 +457,13 @@ pub async fn scan_v1(
 
     match request.format {
         DataFormat::Json => {
-            let fallback_definition = SchemaDefinition::from_arrow_schema(fallback_schema.as_ref());
+            let fallback_definition =
+                SchemaDefinition::from_arrow_schema(fallback_schema.as_ref());
             let (mut rows, schema) = match execute_query_json(query, fallback_definition).await {
                 Ok(result) => result,
                 Err(error) => {
                     error!("scan_v1 query failed table_id={} error={}", request.table_id, error);
-                    return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
+                    return ResultEnvelope::err(ErrorCode::Internal, error);
                 }
             };
 
@@ -467,7 +485,7 @@ pub async fn scan_v1(
                 started_at.elapsed().as_millis()
             );
 
-            Ok(ResultEnvelope::ok(ScanResponseV1 {
+            ResultEnvelope::ok(ScanResponseV1 {
                 chunk: DataChunk::Json(JsonChunk {
                     rows,
                     schema,
@@ -475,14 +493,14 @@ pub async fn scan_v1(
                     limit,
                 }),
                 next_offset,
-            }))
+            })
         }
         DataFormat::Arrow => {
             let batches = match execute_query_batches(query).await {
                 Ok(result) => result,
                 Err(error) => {
                     error!("scan_v1 query failed table_id={} error={}", request.table_id, error);
-                    return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
+                    return ResultEnvelope::err(ErrorCode::Internal, error);
                 }
             };
 
@@ -506,7 +524,7 @@ pub async fn scan_v1(
                         request.table_id,
                         error
                     );
-                    return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
+                    return ResultEnvelope::err(ErrorCode::Internal, error);
                 }
             };
 
@@ -524,15 +542,23 @@ pub async fn scan_v1(
                 started_at.elapsed().as_millis()
             );
 
-            Ok(ResultEnvelope::ok(ScanResponseV1 {
+            ResultEnvelope::ok(ScanResponseV1 {
                 chunk: DataChunk::Arrow(crate::ipc::v1::ArrowChunk {
                     ipc_base64,
                     compression: None,
                 }),
                 next_offset,
-            }))
+            })
         }
     }
+}
+
+#[tauri::command]
+pub async fn scan_v1(
+    state: tauri::State<'_, AppState>,
+    request: ScanRequestV1,
+) -> Result<ResultEnvelope<ScanResponseV1>, String> {
+    Ok(scan_v1_impl(state.inner(), request).await)
 }
 
 #[tauri::command]
@@ -540,6 +566,13 @@ pub async fn query_filter_v1(
     state: tauri::State<'_, AppState>,
     request: QueryFilterRequestV1,
 ) -> Result<ResultEnvelope<QueryResponseV1>, String> {
+    Ok(query_filter_v1_impl(state.inner(), request).await)
+}
+
+async fn query_filter_v1_impl(
+    state: &AppState,
+    request: QueryFilterRequestV1,
+) -> ResultEnvelope<QueryResponseV1> {
     let started_at = Instant::now();
     info!(
         "query_filter_v1 start table_id={} limit={:?} offset={:?}",
@@ -554,26 +587,26 @@ pub async fn query_filter_v1(
 
     if request.filter.trim().is_empty() {
         warn!("query_filter_v1 empty filter table_id={}", request.table_id);
-        return Ok(ResultEnvelope::err(
+        return ResultEnvelope::err(
             ErrorCode::InvalidArgument,
             "filter expression cannot be empty",
-        ));
+        );
     }
 
     let table = match state.connections.lock() {
         Ok(manager) => manager.get_table(&request.table_id),
         Err(_) => {
             error!("query_filter_v1 failed to lock connection manager");
-            return Ok(ResultEnvelope::err(
+            return ResultEnvelope::err(
                 ErrorCode::Internal,
                 "failed to lock connection manager",
-            ))
+            );
         }
     };
 
     let Some(table) = table else {
         warn!("query_filter_v1 table not found table_id={}", request.table_id);
-        return Ok(ResultEnvelope::err(ErrorCode::NotFound, "table not found"));
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let fallback_schema = match table.schema().await {
@@ -584,7 +617,7 @@ pub async fn query_filter_v1(
                 request.table_id,
                 error
             );
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error.to_string()));
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
 
@@ -602,8 +635,12 @@ pub async fn query_filter_v1(
     let (mut rows, schema) = match execute_query_json(query, fallback_schema).await {
         Ok(result) => result,
         Err(error) => {
-            error!("query_filter_v1 query failed table_id={} error={}", request.table_id, error);
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
+            error!(
+                "query_filter_v1 query failed table_id={} error={}",
+                request.table_id,
+                error
+            );
+            return ResultEnvelope::err(ErrorCode::Internal, error);
         }
     };
 
@@ -624,7 +661,7 @@ pub async fn query_filter_v1(
         started_at.elapsed().as_millis()
     );
 
-    Ok(ResultEnvelope::ok(QueryResponseV1 {
+    ResultEnvelope::ok(QueryResponseV1 {
         chunk: DataChunk::Json(JsonChunk {
             rows,
             schema,
@@ -632,7 +669,7 @@ pub async fn query_filter_v1(
             limit,
         }),
         next_offset,
-    }))
+    })
 }
 
 #[tauri::command]
@@ -640,6 +677,13 @@ pub async fn vector_search_v1(
     state: tauri::State<'_, AppState>,
     request: VectorSearchRequestV1,
 ) -> Result<ResultEnvelope<QueryResponseV1>, String> {
+    Ok(vector_search_v1_impl(state.inner(), request).await)
+}
+
+async fn vector_search_v1_impl(
+    state: &AppState,
+    request: VectorSearchRequestV1,
+) -> ResultEnvelope<QueryResponseV1> {
     let started_at = Instant::now();
     info!(
         "vector_search_v1 start table_id={} vector_len={} top_k={:?} offset={:?}",
@@ -666,26 +710,23 @@ pub async fn vector_search_v1(
 
     if request.vector.is_empty() {
         warn!("vector_search_v1 empty vector table_id={}", request.table_id);
-        return Ok(ResultEnvelope::err(
-            ErrorCode::InvalidArgument,
-            "vector must not be empty",
-        ));
+        return ResultEnvelope::err(ErrorCode::InvalidArgument, "vector must not be empty");
     }
 
     let table = match state.connections.lock() {
         Ok(manager) => manager.get_table(&request.table_id),
         Err(_) => {
             error!("vector_search_v1 failed to lock connection manager");
-            return Ok(ResultEnvelope::err(
+            return ResultEnvelope::err(
                 ErrorCode::Internal,
                 "failed to lock connection manager",
-            ))
+            );
         }
     };
 
     let Some(table) = table else {
         warn!("vector_search_v1 table not found table_id={}", request.table_id);
-        return Ok(ResultEnvelope::err(ErrorCode::NotFound, "table not found"));
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let fallback_schema = match table.schema().await {
@@ -696,7 +737,7 @@ pub async fn vector_search_v1(
                 request.table_id,
                 error
             );
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error.to_string()));
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
 
@@ -708,7 +749,7 @@ pub async fn vector_search_v1(
                 request.table_id,
                 error
             );
-            return Ok(ResultEnvelope::err(ErrorCode::InvalidArgument, error.to_string()));
+            return ResultEnvelope::err(ErrorCode::InvalidArgument, error.to_string());
         }
     };
 
@@ -739,7 +780,7 @@ pub async fn vector_search_v1(
         Ok(result) => result,
         Err(error) => {
             error!("vector_search_v1 query failed table_id={} error={}", request.table_id, error);
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
+            return ResultEnvelope::err(ErrorCode::Internal, error);
         }
     };
 
@@ -760,7 +801,7 @@ pub async fn vector_search_v1(
         started_at.elapsed().as_millis()
     );
 
-    Ok(ResultEnvelope::ok(QueryResponseV1 {
+    ResultEnvelope::ok(QueryResponseV1 {
         chunk: DataChunk::Json(JsonChunk {
             rows,
             schema,
@@ -768,7 +809,7 @@ pub async fn vector_search_v1(
             limit,
         }),
         next_offset,
-    }))
+    })
 }
 
 #[tauri::command]
@@ -776,6 +817,13 @@ pub async fn fts_search_v1(
     state: tauri::State<'_, AppState>,
     request: FtsSearchRequestV1,
 ) -> Result<ResultEnvelope<QueryResponseV1>, String> {
+    Ok(fts_search_v1_impl(state.inner(), request).await)
+}
+
+async fn fts_search_v1_impl(
+    state: &AppState,
+    request: FtsSearchRequestV1,
+) -> ResultEnvelope<QueryResponseV1> {
     let started_at = Instant::now();
     info!(
         "fts_search_v1 start table_id={} limit={:?} offset={:?}",
@@ -796,26 +844,26 @@ pub async fn fts_search_v1(
 
     if request.query.trim().is_empty() {
         warn!("fts_search_v1 empty query table_id={}", request.table_id);
-        return Ok(ResultEnvelope::err(
+        return ResultEnvelope::err(
             ErrorCode::InvalidArgument,
             "query text cannot be empty",
-        ));
+        );
     }
 
     let table = match state.connections.lock() {
         Ok(manager) => manager.get_table(&request.table_id),
         Err(_) => {
             error!("fts_search_v1 failed to lock connection manager");
-            return Ok(ResultEnvelope::err(
+            return ResultEnvelope::err(
                 ErrorCode::Internal,
                 "failed to lock connection manager",
-            ))
+            );
         }
     };
 
     let Some(table) = table else {
         warn!("fts_search_v1 table not found table_id={}", request.table_id);
-        return Ok(ResultEnvelope::err(ErrorCode::NotFound, "table not found"));
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let fallback_schema = match table.schema().await {
@@ -826,7 +874,7 @@ pub async fn fts_search_v1(
                 request.table_id,
                 error
             );
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error.to_string()));
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
 
@@ -841,10 +889,7 @@ pub async fn fts_search_v1(
                         request.table_id,
                         error
                     );
-                    return Ok(ResultEnvelope::err(
-                        ErrorCode::InvalidArgument,
-                        error.to_string(),
-                    ))
+                    return ResultEnvelope::err(ErrorCode::InvalidArgument, error.to_string());
                 }
             };
         }
@@ -858,14 +903,14 @@ pub async fn fts_search_v1(
         filter: request.filter,
         limit: Some(query_limit),
         offset: Some(offset),
-    }; 
+    };
 
     let query = apply_query_options(table.query().full_text_search(fts_query), &options);
     let (mut rows, schema) = match execute_query_json(query, fallback_schema).await {
         Ok(result) => result,
         Err(error) => {
             error!("fts_search_v1 query failed table_id={} error={}", request.table_id, error);
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
+            return ResultEnvelope::err(ErrorCode::Internal, error);
         }
     };
 
@@ -886,7 +931,7 @@ pub async fn fts_search_v1(
         started_at.elapsed().as_millis()
     );
 
-    Ok(ResultEnvelope::ok(QueryResponseV1 {
+    ResultEnvelope::ok(QueryResponseV1 {
         chunk: DataChunk::Json(JsonChunk {
             rows,
             schema,
@@ -894,20 +939,24 @@ pub async fn fts_search_v1(
             limit,
         }),
         next_offset,
-    }))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::{io::Cursor, panic};
 
     use arrow_array::types::Float32Type;
     use arrow_array::{FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator, StringArray};
+    use arrow_ipc::reader::StreamReader;
     use arrow_schema::{DataType, Field, Schema};
+    use base64::{engine::general_purpose, Engine as _};
     use lancedb::index::Index;
     use tempfile::tempdir;
 
     use super::*;
+    use crate::ipc::v1::ConnectProfile;
 
     struct TestTable {
         _dir: tempfile::TempDir,
@@ -960,6 +1009,119 @@ mod tests {
             .expect("create table");
 
         TestTable { _dir: dir, table }
+    }
+
+    struct CommandHarness {
+        _dir: tempfile::TempDir,
+        state: AppState,
+        connection_id: String,
+        table_id: String,
+    }
+
+    async fn seed_items_table(connection: &lancedb::Connection) {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int32, false),
+            Field::new("text", DataType::Utf8, false),
+            Field::new(
+                "vector",
+                DataType::FixedSizeList(
+                    Arc::new(Field::new("item", DataType::Float32, true)),
+                    3,
+                ),
+                false,
+            ),
+        ]));
+
+        let ids = Int32Array::from_iter_values(0..5);
+        let texts = StringArray::from(vec!["alpha", "beta", "gamma", "delta", "epsilon"]);
+        let vectors = FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+            vec![
+                Some(vec![Some(0.1), Some(0.2), Some(0.3)]),
+                Some(vec![Some(0.0), Some(0.1), Some(0.0)]),
+                Some(vec![Some(0.2), Some(0.1), Some(0.0)]),
+                Some(vec![Some(0.9), Some(0.9), Some(0.9)]),
+                Some(vec![Some(0.5), Some(0.4), Some(0.3)]),
+            ],
+            3,
+        );
+
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![Arc::new(ids), Arc::new(texts), Arc::new(vectors)],
+        )
+        .expect("create record batch");
+
+        let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema);
+
+        connection
+            .create_table("items", Box::new(batches))
+            .execute()
+            .await
+            .expect("create table");
+    }
+
+    async fn create_command_harness() -> CommandHarness {
+        let dir = tempdir().expect("create tempdir");
+        let uri = dir.path().to_str().expect("tempdir path").to_string();
+        let state = AppState::new();
+
+        let envelope = connect_v1_impl(
+            &state,
+            ConnectRequestV1 {
+                profile: ConnectProfile {
+                    name: "test".to_string(),
+                    uri,
+                    storage_options: Default::default(),
+                    options: Default::default(),
+                    auth: Default::default(),
+                },
+            },
+        )
+        .await;
+
+        assert!(envelope.ok, "connect should succeed: {:?}", envelope.error);
+        let connection_id = envelope
+            .data
+            .as_ref()
+            .expect("connect data")
+            .connection_id
+            .clone();
+
+        let connection = state
+            .connections
+            .lock()
+            .expect("lock connections")
+            .get_connection(&connection_id)
+            .expect("connection exists");
+
+        seed_items_table(&connection).await;
+
+        let opened = open_table_v1_impl(
+            &state,
+            OpenTableRequestV1 {
+                connection_id: connection_id.clone(),
+                table_name: "items".to_string(),
+            },
+        )
+        .await;
+        assert!(opened.ok, "open_table should succeed: {:?}", opened.error);
+
+        let table_id = opened.data.expect("table handle").table_id;
+
+        CommandHarness {
+            _dir: dir,
+            state,
+            connection_id,
+            table_id,
+        }
+    }
+
+    fn poison_connections_mutex(state: &AppState) {
+        let result = panic::catch_unwind(|| {
+            let _guard = state.connections.lock().expect("lock for poison");
+            panic!("poison mutex");
+        });
+        assert!(result.is_err(), "expected a panic to poison the mutex");
     }
 
     #[tokio::test]
@@ -1015,5 +1177,250 @@ mod tests {
             .await
             .expect("execute query");
         assert!(!rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn commands_happy_path_and_errors() {
+        let harness = create_command_harness().await;
+
+        let listed = list_tables_v1_impl(
+            &harness.state,
+            ListTablesRequestV1 {
+                connection_id: harness.connection_id.clone(),
+            },
+        )
+        .await;
+        assert!(listed.ok);
+        assert_eq!(listed.data.expect("tables").tables.len(), 1);
+
+        let schema = get_schema_v1_impl(
+            &harness.state,
+            GetSchemaRequestV1 {
+                table_id: harness.table_id.clone(),
+            },
+        )
+        .await;
+        assert!(schema.ok);
+        assert!(
+            schema.data.expect("schema").fields.iter().any(|f| f.name == "id"),
+            "schema should contain id field"
+        );
+
+        // scan json pagination
+        let scan_page1 = scan_v1_impl(
+            &harness.state,
+            ScanRequestV1 {
+                table_id: harness.table_id.clone(),
+                format: DataFormat::Json,
+                projection: None,
+                filter: None,
+                limit: Some(2),
+                offset: Some(0),
+            },
+        )
+        .await;
+        assert!(scan_page1.ok);
+        let scan_page1 = scan_page1.data.expect("scan data");
+        assert_eq!(scan_page1.next_offset, Some(2));
+        match scan_page1.chunk {
+            DataChunk::Json(chunk) => assert_eq!(chunk.rows.len(), 2),
+            _ => panic!("expected json chunk"),
+        }
+
+        let scan_last = scan_v1_impl(
+            &harness.state,
+            ScanRequestV1 {
+                table_id: harness.table_id.clone(),
+                format: DataFormat::Json,
+                projection: None,
+                filter: None,
+                limit: Some(2),
+                offset: Some(4),
+            },
+        )
+        .await;
+        assert!(scan_last.ok);
+        let scan_last = scan_last.data.expect("scan data");
+        assert_eq!(scan_last.next_offset, None);
+        match scan_last.chunk {
+            DataChunk::Json(chunk) => assert_eq!(chunk.rows.len(), 1),
+            _ => panic!("expected json chunk"),
+        }
+
+        // scan arrow
+        let scan_arrow = scan_v1_impl(
+            &harness.state,
+            ScanRequestV1 {
+                table_id: harness.table_id.clone(),
+                format: DataFormat::Arrow,
+                projection: None,
+                filter: None,
+                limit: Some(3),
+                offset: Some(0),
+            },
+        )
+        .await;
+        assert!(scan_arrow.ok);
+        let scan_arrow = scan_arrow.data.expect("scan arrow");
+        assert_eq!(scan_arrow.next_offset, Some(3));
+
+        let ipc_base64 = match scan_arrow.chunk {
+            DataChunk::Arrow(chunk) => chunk.ipc_base64,
+            _ => panic!("expected arrow chunk"),
+        };
+
+        let decoded = general_purpose::STANDARD
+            .decode(ipc_base64)
+            .expect("decode base64");
+        let reader = StreamReader::try_new(Cursor::new(decoded), None).expect("open stream reader");
+        let mut row_count = 0;
+        for batch in reader {
+            let batch = batch.expect("read batch");
+            row_count += batch.num_rows();
+        }
+        assert_eq!(row_count, 3);
+
+        // query filter
+        let filtered = query_filter_v1_impl(
+            &harness.state,
+            QueryFilterRequestV1 {
+                table_id: harness.table_id.clone(),
+                filter: "id >= 2".to_string(),
+                projection: None,
+                limit: Some(2),
+                offset: Some(0),
+            },
+        )
+        .await;
+        assert!(filtered.ok);
+
+        let filtered_empty = query_filter_v1_impl(
+            &harness.state,
+            QueryFilterRequestV1 {
+                table_id: harness.table_id.clone(),
+                filter: "  ".to_string(),
+                projection: None,
+                limit: None,
+                offset: None,
+            },
+        )
+        .await;
+        assert!(!filtered_empty.ok);
+        assert_eq!(
+            filtered_empty.error.expect("error").code,
+            ErrorCode::InvalidArgument
+        );
+
+        // vector search
+        let vector_ok = vector_search_v1_impl(
+            &harness.state,
+            VectorSearchRequestV1 {
+                table_id: harness.table_id.clone(),
+                vector: vec![0.1, 0.2, 0.3],
+                column: None,
+                top_k: Some(2),
+                projection: None,
+                filter: None,
+                nprobes: None,
+                refine_factor: None,
+                offset: Some(0),
+            },
+        )
+        .await;
+        assert!(vector_ok.ok);
+
+        let vector_empty = vector_search_v1_impl(
+            &harness.state,
+            VectorSearchRequestV1 {
+                table_id: harness.table_id.clone(),
+                vector: vec![],
+                column: None,
+                top_k: None,
+                projection: None,
+                filter: None,
+                nprobes: None,
+                refine_factor: None,
+                offset: None,
+            },
+        )
+        .await;
+        assert!(!vector_empty.ok);
+        assert_eq!(
+            vector_empty.error.expect("error").code,
+            ErrorCode::InvalidArgument
+        );
+
+        // fts search (needs index)
+        let table = harness
+            .state
+            .connections
+            .lock()
+            .expect("lock")
+            .get_table(&harness.table_id)
+            .expect("table");
+        table
+            .create_index(&["text"], Index::FTS(Default::default()))
+            .execute()
+            .await
+            .expect("create fts index");
+
+        let fts_ok = fts_search_v1_impl(
+            &harness.state,
+            FtsSearchRequestV1 {
+                table_id: harness.table_id.clone(),
+                query: "alpha".to_string(),
+                columns: None,
+                limit: Some(10),
+                offset: Some(0),
+                projection: None,
+                filter: None,
+            },
+        )
+        .await;
+        assert!(fts_ok.ok);
+
+        let fts_empty = fts_search_v1_impl(
+            &harness.state,
+            FtsSearchRequestV1 {
+                table_id: harness.table_id.clone(),
+                query: " ".to_string(),
+                columns: None,
+                limit: None,
+                offset: None,
+                projection: None,
+                filter: None,
+            },
+        )
+        .await;
+        assert!(!fts_empty.ok);
+        assert_eq!(fts_empty.error.expect("error").code, ErrorCode::InvalidArgument);
+
+        // not found
+        let missing_schema = get_schema_v1_impl(
+            &harness.state,
+            GetSchemaRequestV1 {
+                table_id: "missing".to_string(),
+            },
+        )
+        .await;
+        assert!(!missing_schema.ok);
+        assert_eq!(missing_schema.error.expect("error").code, ErrorCode::NotFound);
+    }
+
+    #[tokio::test]
+    async fn commands_return_internal_when_mutex_poisoned() {
+        let state = AppState::new();
+        poison_connections_mutex(&state);
+
+        let result = list_tables_v1_impl(
+            &state,
+            ListTablesRequestV1 {
+                connection_id: "any".to_string(),
+            },
+        )
+        .await;
+
+        assert!(!result.ok);
+        assert_eq!(result.error.expect("error").code, ErrorCode::Internal);
     }
 }

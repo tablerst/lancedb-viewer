@@ -1,22 +1,26 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { RouterView, useRoute, useRouter } from "vue-router";
+import { computed } from "vue"
+import { RouterView, useRoute, useRouter } from "vue-router"
 
-import Sidebar from "./components/sidebar/Sidebar.vue";
-import { useConnection } from "./composables/useConnection";
-import { useProfiles } from "./composables/useProfiles";
-import { useStatusMessages } from "./composables/useStatusMessages";
-import { provideWorkspace } from "./composables/workspaceContext";
-import { getConnectionKind, getConnectionKindLabel, getConnectionKindTagType } from "./lib/connectionKind";
-import { themeOverrides } from "./theme/naiveTheme";
+import Sidebar from "./components/sidebar/Sidebar.vue"
+import { useConnection } from "./composables/useConnection"
+import { useProfiles } from "./composables/useProfiles"
+import { useStatusMessages } from "./composables/useStatusMessages"
+import { provideWorkspace } from "./composables/workspaceContext"
+import {
+	getConnectionKind,
+	getConnectionKindLabel,
+	getConnectionKindTagType,
+} from "./lib/connectionKind"
+import { themeOverrides } from "./theme/naiveTheme"
 
-type TagType = "default" | "info" | "warning" | "error" | "success" | "primary";
-type WorkspaceName = "explorer" | "search";
+type TagType = "default" | "info" | "warning" | "error" | "success" | "primary"
+type WorkspaceName = "explorer" | "search"
 
-const route = useRoute();
-const router = useRouter();
+const route = useRoute()
+const router = useRouter()
 
-const { statusMessage, errorMessage, setStatus, setError, clearMessages } = useStatusMessages();
+const { statusMessage, errorMessage, setStatus, setError, clearMessages } = useStatusMessages()
 const {
 	profiles,
 	activeProfileId,
@@ -28,7 +32,7 @@ const {
 } = useProfiles({
 	onStatus: setStatus,
 	onError: setError,
-});
+})
 const {
 	connectionStates,
 	activeConnection,
@@ -47,7 +51,7 @@ const {
 } = useConnection(profiles, activeProfileId, {
 	onStatus: setStatus,
 	onError: setError,
-});
+})
 
 provideWorkspace({
 	profiles,
@@ -76,13 +80,13 @@ provideWorkspace({
 	setStatus,
 	setError,
 	clearMessages,
-});
+})
 
 const activeConnectionSummary = computed<{
-	label: string;
-	connected: boolean;
-	kindLabel: string;
-	kindTagType: TagType;
+	label: string
+	connected: boolean
+	kindLabel: string
+	kindTagType: TagType
 }>(() => {
 	if (!activeProfile.value) {
 		return {
@@ -90,24 +94,24 @@ const activeConnectionSummary = computed<{
 			connected: false,
 			kindLabel: "Unknown",
 			kindTagType: "default" as const,
-		};
+		}
 	}
-	const kind = getConnectionKind(activeProfile.value.uri);
-	const connected = Boolean(activeConnection.value?.connectionId.value);
+	const kind = getConnectionKind(activeProfile.value.uri)
+	const connected = Boolean(activeConnection.value?.connectionId.value)
 	return {
 		label: activeProfile.value.name,
 		connected,
 		kindLabel: getConnectionKindLabel(kind),
 		kindTagType: getConnectionKindTagType(kind),
-	};
-});
+	}
+})
 
 const workspaceTab = computed<WorkspaceName>({
 	get: () => (route.name === "search" ? "search" : "explorer"),
 	set: (name) => {
-		void router.push({ name });
+		void router.push({ name })
 	},
-});
+})
 </script>
 
 <template>

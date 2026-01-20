@@ -1,4 +1,4 @@
-import type { GlobalThemeOverrides } from "naive-ui";
+import type { GlobalThemeOverrides } from "naive-ui"
 
 export const themeOverrides: GlobalThemeOverrides = {
 	common: {
@@ -16,7 +16,7 @@ export const themeOverrides: GlobalThemeOverrides = {
 		warningColorHover: "#fbbf24",
 		warningColorPressed: "#d97706",
 		borderRadius: "10px",
-		fontFamily: "\"Inter\", \"Noto Sans SC\", system-ui, sans-serif",
+		fontFamily: '"Inter", "Noto Sans SC", system-ui, sans-serif',
 		textColor1: "#0f172a",
 		textColor2: "#334155",
 		textColor3: "#64748b",
@@ -46,4 +46,4 @@ export const themeOverrides: GlobalThemeOverrides = {
 	Tag: {
 		borderRadius: "8px",
 	},
-};
+}

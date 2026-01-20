@@ -1,26 +1,26 @@
-import type { AuthDescriptor, ConnectOptions, ConnectProfile } from "../ipc/v1";
-import { normalizeConnectUri } from "../lib/lancedbUri";
+import type { AuthDescriptor, ConnectOptions, ConnectProfile } from "../ipc/v1"
+import { normalizeConnectUri } from "../lib/lancedbUri"
 
 export interface StoredProfile {
-	id: string;
-	name: string;
-	uri: string;
-	storageOptions: Record<string, string>;
-	options?: ConnectOptions;
-	auth?: AuthDescriptor;
+	id: string
+	name: string
+	uri: string
+	storageOptions: Record<string, string>
+	options?: ConnectOptions
+	auth?: AuthDescriptor
 }
 
 export interface ProfileState {
-	profiles: StoredProfile[];
-	activeProfileId: string | null;
+	profiles: StoredProfile[]
+	activeProfileId: string | null
 }
 
 export interface NewProfileInput {
-	name: string;
-	uri: string;
-	storageOptions?: Record<string, string>;
-	options?: ConnectOptions;
-	auth?: AuthDescriptor;
+	name: string
+	uri: string
+	storageOptions?: Record<string, string>
+	options?: ConnectOptions
+	auth?: AuthDescriptor
 }
 
 export function toConnectProfile(profile: StoredProfile): ConnectProfile {
@@ -30,5 +30,5 @@ export function toConnectProfile(profile: StoredProfile): ConnectProfile {
 		storageOptions: profile.storageOptions,
 		options: profile.options,
 		auth: profile.auth,
-	};
+	}
 }

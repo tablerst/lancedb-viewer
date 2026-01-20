@@ -1,161 +1,155 @@
 <script setup lang="ts">
-import { open } from "@tauri-apps/plugin-dialog";
-import gsap from "gsap";
-import { Database, Filter, FolderOpen, PanelLeftClose, PanelLeftOpen, Plus } from "lucide-vue-next";
-import { computed, ref, watch } from "vue";
+import { open } from "@tauri-apps/plugin-dialog"
+import { Database, Filter, FolderOpen, PanelLeftClose, PanelLeftOpen, Plus } from "lucide-vue-next"
+import { computed, ref } from "vue"
 
-import type { ConnectionState } from "../../composables/useConnection";
-import { useWorkspace } from "../../composables/workspaceContext";
-import type { ConnectionKind } from "../../lib/connectionKind";
-import { getConnectionKind, getConnectionKindLabel } from "../../lib/connectionKind";
-import { normalizeConnectUri } from "../../lib/lancedbUri";
-import type { StoredProfile } from "../../models/profile";
-import ConnectionItem from "./ConnectionItem.vue";
+import type { ConnectionState } from "../../composables/useConnection"
+import { useWorkspace } from "../../composables/workspaceContext"
+import type { ConnectionKind } from "../../lib/connectionKind"
+import { getConnectionKind, getConnectionKindLabel } from "../../lib/connectionKind"
+import { normalizeConnectUri } from "../../lib/lancedbUri"
+import type { StoredProfile } from "../../models/profile"
+import ConnectionItem from "./ConnectionItem.vue"
 
 const props = defineProps<{
-	profiles: StoredProfile[];
-	activeProfileId: string | null;
-	connectionStates: Record<string, ConnectionState>;
-	onSelectProfile: (profileId: string) => void | Promise<void>;
-	onConnectProfile: (profileId: string) => void | Promise<void>;
-	onRefreshTables: (profileId: string) => void | Promise<void>;
-	onOpenTable: (profileId: string, tableName: string) => void | Promise<void>;
-}>();
+	profiles: StoredProfile[]
+	activeProfileId: string | null
+	connectionStates: Record<string, ConnectionState>
+	onSelectProfile: (profileId: string) => void | Promise<void>
+	onConnectProfile: (profileId: string) => void | Promise<void>
+	onRefreshTables: (profileId: string) => void | Promise<void>
+	onOpenTable: (profileId: string, tableName: string) => void | Promise<void>
+}>()
 
-const isCollapsed = ref(false);
+const isCollapsed = ref(false)
 
-const { profileForm, isSavingProfile, addProfile, errorMessage, setError, clearMessages } = useWorkspace();
-const isCreateModalOpen = ref(false);
+const {
+	profileForm,
+	isSavingProfile,
+	addProfile,
+	errorMessage,
+	setStatus,
+	setError,
+	clearMessages,
+} = useWorkspace()
+const isCreateModalOpen = ref(false)
 
-type ProfileFilterKind = "all" | ConnectionKind;
-const filterKind = ref<ProfileFilterKind>("all");
+type ProfileFilterKind = "all" | ConnectionKind
+const filterKind = ref<ProfileFilterKind>("all")
 
-const expandedWidth = 320;
-const collapsedWidth = 72;
-
-const animatedWidth = ref(expandedWidth);
-const widthTween = { value: expandedWidth };
+const expandedWidth = 320
+const collapsedWidth = 72
 
 const filteredProfiles = computed(() => {
 	if (filterKind.value === "all") {
-		return props.profiles;
+		return props.profiles
 	}
-	return props.profiles.filter((profile) => getConnectionKind(profile.uri) === filterKind.value);
-});
+	return props.profiles.filter((profile) => getConnectionKind(profile.uri) === filterKind.value)
+})
 
-const shouldVirtualize = computed(() => isCollapsed.value && filteredProfiles.value.length > 12);
+const shouldVirtualize = computed(() => isCollapsed.value && filteredProfiles.value.length > 12)
+
+const sidebarWidth = computed(() => (isCollapsed.value ? collapsedWidth : expandedWidth))
 
 const createKind = computed<ConnectionKind>(() => {
-	const value = profileForm.value.uri.trim();
+	const value = profileForm.value.uri.trim()
 	if (!value) {
-		return "local";
+		return "local"
 	}
-	return getConnectionKind(value);
-});
+	return getConnectionKind(value)
+})
 
 const uriPlaceholder = computed(() => {
 	switch (createKind.value) {
 		case "local":
-			return "例如：E:\\data\\sample-db（数据库目录）";
+			return "例如：E:\\data\\sample-db（数据库目录）"
 		case "s3":
-			return "例如：s3://bucket/path";
+			return "例如：s3://bucket/path"
 		case "remote":
-			return "例如：db://host:port";
+			return "例如：db://host:port"
 		case "gcs":
-			return "例如：gs://bucket/path";
+			return "例如：gs://bucket/path"
 		case "azure":
-			return "例如：az://container/path";
+			return "例如：az://container/path"
 		default:
-			return "请输入 URI";
+			return "请输入 URI"
 	}
-});
+})
 
-const showLocalPicker = computed(() => createKind.value === "local");
+const showLocalPicker = computed(() => createKind.value === "local")
 
 async function pickLocalFolder() {
-	clearMessages();
+	clearMessages()
 	try {
 		const selected = await open({
 			directory: true,
 			multiple: false,
 			title: "选择 LanceDB 数据库目录",
-		});
+		})
 
 		if (!selected || Array.isArray(selected)) {
-			return;
+			return
 		}
 
-		profileForm.value.uri = normalizeConnectUri(selected);
+		profileForm.value.uri = normalizeConnectUri(selected)
 	} catch (error) {
-		const message = error instanceof Error ? error.message : "打开文件夹选择器失败";
-		setError(message);
+		const message = error instanceof Error ? error.message : "打开文件夹选择器失败"
+		setError(message)
 	}
 }
 
-watch(
-	isCollapsed,
-	(collapsed) => {
-		gsap.killTweensOf(widthTween);
-		widthTween.value = animatedWidth.value;
-		gsap.to(widthTween, {
-			value: collapsed ? collapsedWidth : expandedWidth,
-			duration: 0.25,
-			ease: "power2.out",
-			onUpdate: () => {
-				animatedWidth.value = widthTween.value;
-			},
-			onComplete: () => {
-				animatedWidth.value = collapsed ? collapsedWidth : expandedWidth;
-			},
-		});
-	},
-	{ immediate: true },
-);
-
 function toggleCollapse() {
-	isCollapsed.value = !isCollapsed.value;
+	isCollapsed.value = !isCollapsed.value
 }
 
 function openCreateModal() {
-	clearMessages();
-	if (!profileForm.value.name && !profileForm.value.uri) {
-		profileForm.value.storageOptionsJson ||= "{}";
+	// Always open first; avoid any transient state issues preventing the modal from showing.
+	isCreateModalOpen.value = true
+	try {
+		clearMessages()
+		setStatus("已打开新建连接")
+		const form = profileForm.value
+		if (form && !form.name && !form.uri) {
+			form.storageOptionsJson ||= "{}"
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "打开新建连接弹窗失败"
+		setError(message)
 	}
-	isCreateModalOpen.value = true;
 }
 
 function closeCreateModal() {
-	isCreateModalOpen.value = false;
+	isCreateModalOpen.value = false
 }
 
 async function saveProfile() {
-	clearMessages();
-	await addProfile();
+	clearMessages()
+	await addProfile()
 	if (!errorMessage.value) {
-		isCreateModalOpen.value = false;
+		isCreateModalOpen.value = false
 	}
 }
 
 async function selectAndConnect(profileId: string) {
-	await props.onSelectProfile(profileId);
-	await props.onConnectProfile(profileId);
+	await props.onSelectProfile(profileId)
+	await props.onConnectProfile(profileId)
 }
 
 async function selectAndRefresh(profileId: string) {
-	await props.onSelectProfile(profileId);
-	await props.onRefreshTables(profileId);
+	await props.onSelectProfile(profileId)
+	await props.onRefreshTables(profileId)
 }
 
 async function selectAndOpenTable(profileId: string, tableName: string) {
-	await props.onSelectProfile(profileId);
-	await props.onOpenTable(profileId, tableName);
+	await props.onSelectProfile(profileId)
+	await props.onOpenTable(profileId, tableName)
 }
 </script>
 
 <template>
 	<aside
-		class="flex h-full shrink-0 flex-col border-r border-slate-200 bg-white"
-		:style="{ width: `${animatedWidth}px` }"
+		class="flex h-full shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 ease-out"
+		:style="{ width: `${sidebarWidth}px` }"
 	>
 		<div
 			class="flex items-center px-4 pt-4"
@@ -205,7 +199,7 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 					</div>
 				</NPopover>
 
-				<NButton size="small" type="primary" @click="openCreateModal">
+				<NButton size="small" type="primary" @click.stop="openCreateModal">
 					<Plus class="h-4 w-4" />
 					<span v-if="!isCollapsed" class="ml-2">新建</span>
 				</NButton>
@@ -251,7 +245,13 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 			</div>
 		</div>
 
-		<NModal v-model:show="isCreateModalOpen" preset="card" title="新建连接" :style="{ width: '520px' }">
+		<NModal
+			v-model:show="isCreateModalOpen"
+			preset="card"
+			title="新建连接"
+			:to="'body'"
+			:style="{ width: '520px' }"
+		>
 			<div class="space-y-3">
 				<div class="space-y-1">
 					<label class="text-xs text-slate-500">连接名称</label>
