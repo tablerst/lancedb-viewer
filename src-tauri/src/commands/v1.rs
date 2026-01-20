@@ -1,7 +1,10 @@
 use std::time::{Duration, Instant};
 
 use arrow_array::RecordBatch;
+use arrow_ipc::writer::StreamWriter;
 use arrow_json::ArrayWriter;
+use arrow_schema::Schema;
+use base64::{engine::general_purpose, Engine as _};
 use futures_util::TryStreamExt;
 use lancedb::index::scalar::FullTextSearchQuery;
 use lancedb::query::{ExecutableQuery, QueryBase};
@@ -35,6 +38,47 @@ fn batches_to_json_rows(batches: &[RecordBatch]) -> Result<Vec<serde_json::Value
         serde_json::from_slice(&json).map_err(|error| error.to_string())?;
 
     Ok(rows)
+}
+
+fn batches_to_arrow_ipc_base64(
+    batches: &[RecordBatch],
+    schema: &Schema,
+) -> Result<String, String> {
+    let mut buffer = Vec::new();
+    let mut writer = StreamWriter::try_new(&mut buffer, schema)
+        .map_err(|error| error.to_string())?;
+
+    for batch in batches {
+        writer.write(batch).map_err(|error| error.to_string())?;
+    }
+
+    writer.finish().map_err(|error| error.to_string())?;
+    Ok(general_purpose::STANDARD.encode(buffer))
+}
+
+fn truncate_batches(batches: &[RecordBatch], limit: usize) -> Vec<RecordBatch> {
+    if limit == 0 {
+        return Vec::new();
+    }
+
+    let mut remaining = limit;
+    let mut trimmed = Vec::new();
+
+    for batch in batches {
+        if remaining == 0 {
+            break;
+        }
+        let rows = batch.num_rows();
+        if rows <= remaining {
+            trimmed.push(batch.clone());
+            remaining = remaining.saturating_sub(rows);
+        } else {
+            trimmed.push(batch.slice(0, remaining));
+            remaining = 0;
+        }
+    }
+
+    trimmed
 }
 
 #[derive(Debug, Clone, Default)]
@@ -71,11 +115,7 @@ async fn execute_query_json(
     query: impl ExecutableQuery,
     fallback_schema: SchemaDefinition,
 ) -> Result<(Vec<serde_json::Value>, SchemaDefinition), String> {
-    let stream = query.execute().await.map_err(|error| error.to_string())?;
-    let batches = stream
-        .try_collect::<Vec<_>>()
-        .await
-        .map_err(|error| error.to_string())?;
+    let batches = execute_query_batches(query).await?;
     let batch_count = batches.len();
 
     let schema = if let Some(first) = batches.first() {
@@ -91,6 +131,14 @@ async fn execute_query_json(
         rows.len()
     );
     Ok((rows, schema))
+}
+
+async fn execute_query_batches(query: impl ExecutableQuery) -> Result<Vec<RecordBatch>, String> {
+    let stream = query.execute().await.map_err(|error| error.to_string())?;
+    stream
+        .try_collect::<Vec<_>>()
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -351,14 +399,6 @@ pub async fn scan_v1(
         trace!("scan_v1 projection={:?}", projection);
     }
 
-    if matches!(request.format, DataFormat::Arrow) {
-        warn!("scan_v1 arrow format not implemented table_id={}", request.table_id);
-        return Ok(ResultEnvelope::err(
-            ErrorCode::NotImplemented,
-            "arrow format is not implemented yet",
-        ));
-    }
-
     let table = match state.connections.lock() {
         Ok(manager) => manager.get_table(&request.table_id),
         Err(_) => {
@@ -377,55 +417,122 @@ pub async fn scan_v1(
 
     let limit = request.limit.unwrap_or(100);
     let offset = request.offset.unwrap_or(0);
-    let mut query = table.query();
-
-    if let Some(filter) = request.filter.as_deref() {
-        query = query.only_if(filter);
-    }
-
-    let query_limit = limit.saturating_add(offset);
-    query = query.limit(query_limit);
+    let projection = request.projection.clone();
+    let filter = request.filter.clone();
+    let query_limit = limit.saturating_add(1);
 
     let fallback_schema = match table.schema().await {
-        Ok(schema) => SchemaDefinition::from_arrow_schema(schema.as_ref()),
+        Ok(schema) => schema,
         Err(error) => {
             error!("scan_v1 failed to read schema table_id={} error={}", request.table_id, error);
             return Ok(ResultEnvelope::err(ErrorCode::Internal, error.to_string()));
         }
     };
 
-    let (mut rows, schema) = match execute_query_json(query, fallback_schema).await {
-        Ok(result) => result,
-        Err(error) => {
-            error!("scan_v1 query failed table_id={} error={}", request.table_id, error);
-            return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
-        }
+    let options = QueryOptions {
+        projection,
+        filter,
+        limit: Some(query_limit),
+        offset: Some(offset),
     };
 
-    let total = rows.len();
-    let start = offset.min(total);
-    let end = offset.saturating_add(limit).min(total);
-    rows = rows[start..end].to_vec();
+    let query = apply_query_options(table.query(), &options);
 
-    let next_offset = if end < total { Some(end) } else { None };
+    match request.format {
+        DataFormat::Json => {
+            let fallback_definition = SchemaDefinition::from_arrow_schema(fallback_schema.as_ref());
+            let (mut rows, schema) = match execute_query_json(query, fallback_definition).await {
+                Ok(result) => result,
+                Err(error) => {
+                    error!("scan_v1 query failed table_id={} error={}", request.table_id, error);
+                    return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
+                }
+            };
 
-    info!(
-        "scan_v1 ok table_id={} rows={} next_offset={:?} elapsed_ms={}",
-        request.table_id,
-        rows.len(),
-        next_offset,
-        started_at.elapsed().as_millis()
-    );
+            let has_more = rows.len() > limit;
+            if has_more {
+                rows.truncate(limit);
+            }
+            let next_offset = if has_more {
+                Some(offset.saturating_add(limit))
+            } else {
+                None
+            };
 
-    Ok(ResultEnvelope::ok(ScanResponseV1 {
-        chunk: DataChunk::Json(JsonChunk {
-            rows,
-            schema,
-            offset,
-            limit,
-        }),
-        next_offset,
-    }))
+            info!(
+                "scan_v1 ok table_id={} rows={} next_offset={:?} elapsed_ms={}",
+                request.table_id,
+                rows.len(),
+                next_offset,
+                started_at.elapsed().as_millis()
+            );
+
+            Ok(ResultEnvelope::ok(ScanResponseV1 {
+                chunk: DataChunk::Json(JsonChunk {
+                    rows,
+                    schema,
+                    offset,
+                    limit,
+                }),
+                next_offset,
+            }))
+        }
+        DataFormat::Arrow => {
+            let batches = match execute_query_batches(query).await {
+                Ok(result) => result,
+                Err(error) => {
+                    error!("scan_v1 query failed table_id={} error={}", request.table_id, error);
+                    return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
+                }
+            };
+
+            let output_schema = batches
+                .first()
+                .map(|batch| batch.schema())
+                .unwrap_or_else(|| fallback_schema.clone());
+            let total_rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+            let has_more = total_rows > limit;
+            let trimmed = if has_more {
+                truncate_batches(&batches, limit)
+            } else {
+                batches
+            };
+
+            let ipc_base64 = match batches_to_arrow_ipc_base64(&trimmed, output_schema.as_ref()) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    error!(
+                        "scan_v1 arrow encode failed table_id={} error={}",
+                        request.table_id,
+                        error
+                    );
+                    return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
+                }
+            };
+
+            let next_offset = if has_more {
+                Some(offset.saturating_add(limit))
+            } else {
+                None
+            };
+
+            info!(
+                "scan_v1 ok arrow table_id={} rows={} next_offset={:?} elapsed_ms={}",
+                request.table_id,
+                total_rows.min(limit),
+                next_offset,
+                started_at.elapsed().as_millis()
+            );
+
+            Ok(ResultEnvelope::ok(ScanResponseV1 {
+                chunk: DataChunk::Arrow(crate::ipc::v1::ArrowChunk {
+                    ipc_base64,
+                    compression: None,
+                }),
+                next_offset,
+            }))
+        }
+    }
 }
 
 #[tauri::command]
@@ -483,20 +590,31 @@ pub async fn query_filter_v1(
 
     let limit = request.limit.unwrap_or(100);
     let offset = request.offset.unwrap_or(0);
+    let query_limit = limit.saturating_add(1);
     let options = QueryOptions {
         projection: request.projection,
         filter: Some(request.filter),
-        limit: Some(limit),
+        limit: Some(query_limit),
         offset: Some(offset),
     };
 
     let query = apply_query_options(table.query(), &options);
-    let (rows, schema) = match execute_query_json(query, fallback_schema).await {
+    let (mut rows, schema) = match execute_query_json(query, fallback_schema).await {
         Ok(result) => result,
         Err(error) => {
             error!("query_filter_v1 query failed table_id={} error={}", request.table_id, error);
             return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
         }
+    };
+
+    let has_more = rows.len() > limit;
+    if has_more {
+        rows.truncate(limit);
+    }
+    let next_offset = if has_more {
+        Some(offset.saturating_add(limit))
+    } else {
+        None
     };
 
     info!(
@@ -513,7 +631,7 @@ pub async fn query_filter_v1(
             offset,
             limit,
         }),
-        next_offset: None,
+        next_offset,
     }))
 }
 
@@ -608,20 +726,31 @@ pub async fn vector_search_v1(
 
     let limit = request.top_k.unwrap_or(10);
     let offset = request.offset.unwrap_or(0);
+    let query_limit = limit.saturating_add(1);
     let options = QueryOptions {
         projection: request.projection,
         filter: request.filter,
-        limit: Some(limit),
+        limit: Some(query_limit),
         offset: Some(offset),
     };
 
     let query = apply_query_options(vector_query, &options);
-    let (rows, schema) = match execute_query_json(query, fallback_schema).await {
+    let (mut rows, schema) = match execute_query_json(query, fallback_schema).await {
         Ok(result) => result,
         Err(error) => {
             error!("vector_search_v1 query failed table_id={} error={}", request.table_id, error);
             return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
         }
+    };
+
+    let has_more = rows.len() > limit;
+    if has_more {
+        rows.truncate(limit);
+    }
+    let next_offset = if has_more {
+        Some(offset.saturating_add(limit))
+    } else {
+        None
     };
 
     info!(
@@ -638,7 +767,7 @@ pub async fn vector_search_v1(
             offset,
             limit,
         }),
-        next_offset: None,
+        next_offset,
     }))
 }
 
@@ -723,20 +852,31 @@ pub async fn fts_search_v1(
 
     let limit = request.limit.unwrap_or(100);
     let offset = request.offset.unwrap_or(0);
+    let query_limit = limit.saturating_add(1);
     let options = QueryOptions {
         projection: request.projection,
         filter: request.filter,
-        limit: Some(limit),
+        limit: Some(query_limit),
         offset: Some(offset),
     }; 
 
     let query = apply_query_options(table.query().full_text_search(fts_query), &options);
-    let (rows, schema) = match execute_query_json(query, fallback_schema).await {
+    let (mut rows, schema) = match execute_query_json(query, fallback_schema).await {
         Ok(result) => result,
         Err(error) => {
             error!("fts_search_v1 query failed table_id={} error={}", request.table_id, error);
             return Ok(ResultEnvelope::err(ErrorCode::Internal, error));
         }
+    };
+
+    let has_more = rows.len() > limit;
+    if has_more {
+        rows.truncate(limit);
+    }
+    let next_offset = if has_more {
+        Some(offset.saturating_add(limit))
+    } else {
+        None
     };
 
     info!(
@@ -753,7 +893,7 @@ pub async fn fts_search_v1(
             offset,
             limit,
         }),
-        next_offset: None,
+        next_offset,
     }))
 }
 

@@ -48,10 +48,29 @@ const visibleColumns = computed(() =>
 );
 const hasActiveTable = computed(() => Boolean(activeTableId.value));
 
+function compareValues(a: unknown, b: unknown) {
+	if (a === b) {
+		return 0;
+	}
+	if (a === null || a === undefined) {
+		return -1;
+	}
+	if (b === null || b === undefined) {
+		return 1;
+	}
+	const numA = typeof a === "number" ? a : Number(a);
+	const numB = typeof b === "number" ? b : Number(b);
+	if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
+		return numA - numB;
+	}
+	return String(a).localeCompare(String(b));
+}
+
 const tableColumns = computed<DataTableColumns<Record<string, unknown>>>(() =>
 	visibleColumns.value.map((name) => ({
 		title: name,
 		key: name,
+		sorter: (rowA, rowB) => compareValues(rowA[name], rowB[name]),
 		render: (row) => formatCellValue(row[name]),
 	})),
 );

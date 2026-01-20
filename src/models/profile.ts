@@ -1,4 +1,5 @@
 import type { AuthDescriptor, ConnectOptions, ConnectProfile } from "../ipc/v1";
+import { normalizeConnectUri } from "../lib/lancedbUri";
 
 export interface StoredProfile {
 	id: string;
@@ -25,7 +26,7 @@ export interface NewProfileInput {
 export function toConnectProfile(profile: StoredProfile): ConnectProfile {
 	return {
 		name: profile.name,
-		uri: profile.uri,
+		uri: normalizeConnectUri(profile.uri),
 		storageOptions: profile.storageOptions,
 		options: profile.options,
 		auth: profile.auth,

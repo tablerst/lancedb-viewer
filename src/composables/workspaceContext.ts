@@ -3,6 +3,7 @@ import { inject, provide } from "vue";
 
 import type { SchemaDefinition, TableInfo } from "../ipc/v1";
 import type { StoredProfile } from "../models/profile";
+import type { ConnectionState } from "./useConnection";
 
 export interface ProfileFormState {
 	name: string;
@@ -19,18 +20,20 @@ export interface WorkspaceContext {
 	addProfile: () => Promise<void>;
 	selectProfile: (profileId: string) => Promise<void>;
 
-	connectionId: Ref<string | null>;
-	tables: Ref<TableInfo[]>;
-	activeTableName: Ref<string | null>;
-	activeTableId: Ref<string | null>;
-	schema: Ref<SchemaDefinition | null>;
-	isConnecting: Ref<boolean>;
-	isRefreshing: Ref<boolean>;
-	isOpening: Ref<boolean>;
-	connectActiveProfile: () => Promise<void>;
-	refreshTables: () => Promise<void>;
-	openTable: (name: string) => Promise<void>;
-	resetConnection: () => void;
+	connectionStates: Ref<Record<string, ConnectionState>>;
+	activeConnection: ComputedRef<ConnectionState | null>;
+	connectionId: ComputedRef<string | null>;
+	tables: ComputedRef<TableInfo[]>;
+	activeTableName: ComputedRef<string | null>;
+	activeTableId: ComputedRef<string | null>;
+	schema: ComputedRef<SchemaDefinition | null>;
+	isConnecting: ComputedRef<boolean>;
+	isRefreshing: ComputedRef<boolean>;
+	isOpening: ComputedRef<boolean>;
+	connectProfile: (profileId: string) => Promise<void>;
+	refreshTables: (profileId: string) => Promise<void>;
+	openTable: (profileId: string, name: string) => Promise<void>;
+	resetConnection: (profileId: string) => void;
 
 	statusMessage: Ref<string>;
 	errorMessage: Ref<string>;

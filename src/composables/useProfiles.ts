@@ -1,5 +1,7 @@
 import { computed, onMounted, ref } from "vue";
 
+import { getConnectionKind } from "../lib/connectionKind";
+import { normalizeConnectUri } from "../lib/lancedbUri";
 import type { StoredProfile } from "../models/profile";
 import { createProfile, loadProfileState, saveProfileState } from "../stores/profiles";
 
@@ -60,18 +62,26 @@ export function useProfiles(options: UseProfilesOptions = {}) {
 		}
 
 		const name = profileForm.value.name.trim();
-		const uri = profileForm.value.uri.trim();
-		if (!name || !uri) {
+		const uriRaw = profileForm.value.uri.trim();
+		if (!name || !uriRaw) {
 			options.onError?.("请填写连接名称与 URI");
 			return;
 		}
 
 		try {
 			isSavingProfile.value = true;
+			const normalizedUri = normalizeConnectUri(uriRaw);
+			if (!normalizedUri.trim()) {
+				options.onError?.("URI 无效");
+				return;
+			}
+			if (getConnectionKind(normalizedUri) === "local" && uriRaw !== normalizedUri) {
+				options.onStatus?.("已规范化本地路径（例如移除 file:// 或将 *.lance 转为数据库目录）");
+			}
 			const storageOptions = parseStorageOptions(profileForm.value.storageOptionsJson);
 			const profile = createProfile({
 				name,
-				uri,
+				uri: normalizedUri,
 				storageOptions,
 				auth: { type: "none" },
 			});

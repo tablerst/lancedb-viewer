@@ -15,8 +15,32 @@ import type {
 	VectorSearchRequestV1,
 } from "../ipc/v1";
 
+function normalizeInvokeError(error: unknown, fallback: string): Error {
+	if (error instanceof Error) {
+		return error;
+	}
+	if (typeof error === "string") {
+		return new Error(error);
+	}
+	if (typeof error === "object" && error && "message" in error) {
+		const message = (error as { message?: unknown }).message;
+		if (typeof message === "string" && message.trim()) {
+			return new Error(message);
+		}
+	}
+	try {
+		return new Error(JSON.stringify(error));
+	} catch {
+		return new Error(fallback);
+	}
+}
+
 async function invokeV1<T>(command: string, payload: unknown): Promise<ResultEnvelope<T>> {
-	return invoke<ResultEnvelope<T>>(command, payload as never);
+	try {
+		return await invoke<ResultEnvelope<T>>(command, payload as never);
+	} catch (error) {
+		throw normalizeInvokeError(error, `调用 ${command} 失败`);
+	}
 }
 
 export function unwrapEnvelope<T>(envelope: ResultEnvelope<T>): T {
