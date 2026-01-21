@@ -54,44 +54,44 @@ export function unwrapEnvelope<T>(envelope: ResultEnvelope<T>): T {
 export async function connectV1(
 	profile: ConnectProfile
 ): Promise<ResultEnvelope<ConnectResponseV1>> {
-	return invokeV1("connect_v1", { profile })
+	return invokeV1("connect_v1", { request: { profile } })
 }
 
 export async function listTablesV1(
 	connectionId: string
 ): Promise<ResultEnvelope<ListTablesResponseV1>> {
-	return invokeV1("list_tables_v1", { connectionId })
+	return invokeV1("list_tables_v1", { request: { connectionId } })
 }
 
 export async function openTableV1(
 	connectionId: string,
 	tableName: string
 ): Promise<ResultEnvelope<TableHandle>> {
-	return invokeV1("open_table_v1", { connectionId, tableName })
+	return invokeV1("open_table_v1", { request: { connectionId, tableName } })
 }
 
 export async function getSchemaV1(tableId: string): Promise<ResultEnvelope<SchemaDefinition>> {
-	return invokeV1("get_schema_v1", { tableId })
+	return invokeV1("get_schema_v1", { request: { tableId } })
 }
 
 export async function scanV1(request: ScanRequestV1): Promise<ResultEnvelope<ScanResponseV1>> {
-	return invokeV1("scan_v1", request)
+	return invokeV1("scan_v1", { request })
 }
 
 export async function queryFilterV1(
 	request: QueryFilterRequestV1
 ): Promise<ResultEnvelope<QueryResponseV1>> {
-	return invokeV1("query_filter_v1", request)
+	return invokeV1("query_filter_v1", { request })
 }
 
 export async function vectorSearchV1(
 	request: VectorSearchRequestV1
 ): Promise<ResultEnvelope<QueryResponseV1>> {
-	return invokeV1("vector_search_v1", request)
+	return invokeV1("vector_search_v1", { request })
 }
 
 export async function ftsSearchV1(
 	request: FtsSearchRequestV1
 ): Promise<ResultEnvelope<QueryResponseV1>> {
-	return invokeV1("fts_search_v1", request)
+	return invokeV1("fts_search_v1", { request })
 }

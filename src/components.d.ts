@@ -17,11 +17,15 @@ declare module 'vue' {
     NGlobalStyle: typeof import('naive-ui')['NGlobalStyle']
     NInput: typeof import('naive-ui')['NInput']
     NInputNumber: typeof import('naive-ui')['NInputNumber']
+    NMessageProvider: typeof import('naive-ui')['NMessageProvider']
     NModal: typeof import('naive-ui')['NModal']
+    NPagination: typeof import('naive-ui')['NPagination']
+    NPopconfirm: typeof import('naive-ui')['NPopconfirm']
     NPopover: typeof import('naive-ui')['NPopover']
     NRadioButton: typeof import('naive-ui')['NRadioButton']
     NRadioGroup: typeof import('naive-ui')['NRadioGroup']
     NSelect: typeof import('naive-ui')['NSelect']
+    NSpin: typeof import('naive-ui')['NSpin']
     NTabPane: typeof import('naive-ui')['NTabPane']
     NTabs: typeof import('naive-ui')['NTabs']
     NTag: typeof import('naive-ui')['NTag']
@@ -29,5 +33,6 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     Sidebar: typeof import('./components/sidebar/Sidebar.vue')['default']
+    StatusMessageBridge: typeof import('./components/StatusMessageBridge.vue')['default']
   }
 }

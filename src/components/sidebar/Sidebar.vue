@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { open } from "@tauri-apps/plugin-dialog"
-import { Database, Filter, FolderOpen, PanelLeftClose, PanelLeftOpen, Plus } from "lucide-vue-next"
-import { computed, ref } from "vue"
+import { listen } from "@tauri-apps/api/event"
+import { getCurrentWindow } from "@tauri-apps/api/window"
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow"
+import { ChevronLeft, ChevronRight, Database, Filter, Plus } from "lucide-vue-next"
+import { computed, onBeforeUnmount, onMounted, ref } from "vue"
 
 import type { ConnectionState } from "../../composables/useConnection"
 import { useWorkspace } from "../../composables/workspaceContext"
 import type { ConnectionKind } from "../../lib/connectionKind"
 import { getConnectionKind, getConnectionKindLabel } from "../../lib/connectionKind"
-import { normalizeConnectUri } from "../../lib/lancedbUri"
 import type { StoredProfile } from "../../models/profile"
 import ConnectionItem from "./ConnectionItem.vue"
 
@@ -25,20 +26,39 @@ const isCollapsed = ref(false)
 
 const {
 	profileForm,
-	isSavingProfile,
 	addProfile,
-	errorMessage,
+	updateProfile,
+	deleteProfile,
+	resetConnection,
 	setStatus,
 	setError,
 	clearMessages,
 } = useWorkspace()
-const isCreateModalOpen = ref(false)
+
+type CreateProfilePayload = {
+	name: string
+	uri: string
+	storageOptionsJson?: string
+}
+
+type UpdateProfilePayload = {
+	id: string
+	name: string
+	uri: string
+	storageOptionsJson?: string
+}
+
+const createDialogLabel = "dialog-new-connection"
+const editDialogLabel = "dialog-edit-connection"
+let unlistenCreateProfile: (() => void) | null = null
+let unlistenUpdateProfile: (() => void) | null = null
 
 type ProfileFilterKind = "all" | ConnectionKind
 const filterKind = ref<ProfileFilterKind>("all")
 
-const expandedWidth = 320
-const collapsedWidth = 72
+const expandedWidth = "clamp(240px, 26vw, 340px)"
+const collapsedWidth = "clamp(64px, 8vw, 84px)"
+const collapsedItemSize = 116
 
 const filteredProfiles = computed(() => {
 	if (filterKind.value === "all") {
@@ -50,83 +70,130 @@ const filteredProfiles = computed(() => {
 const shouldVirtualize = computed(() => isCollapsed.value && filteredProfiles.value.length > 12)
 
 const sidebarWidth = computed(() => (isCollapsed.value ? collapsedWidth : expandedWidth))
+const virtualItemSize = computed(() => (isCollapsed.value ? collapsedItemSize : 92))
 
-const createKind = computed<ConnectionKind>(() => {
-	const value = profileForm.value.uri.trim()
-	if (!value) {
-		return "local"
-	}
-	return getConnectionKind(value)
-})
-
-const uriPlaceholder = computed(() => {
-	switch (createKind.value) {
-		case "local":
-			return "例如：E:\\data\\sample-db（数据库目录）"
-		case "s3":
-			return "例如：s3://bucket/path"
-		case "remote":
-			return "例如：db://host:port"
-		case "gcs":
-			return "例如：gs://bucket/path"
-		case "azure":
-			return "例如：az://container/path"
-		default:
-			return "请输入 URI"
-	}
-})
-
-const showLocalPicker = computed(() => createKind.value === "local")
-
-async function pickLocalFolder() {
-	clearMessages()
+onMounted(async () => {
 	try {
-		const selected = await open({
-			directory: true,
-			multiple: false,
-			title: "选择 LanceDB 数据库目录",
-		})
-
-		if (!selected || Array.isArray(selected)) {
-			return
-		}
-
-		profileForm.value.uri = normalizeConnectUri(selected)
+		unlistenCreateProfile = await listen<CreateProfilePayload>(
+			"profiles:create",
+			async ({ payload }) => {
+				clearMessages()
+				profileForm.value = {
+					name: payload.name ?? "",
+					uri: payload.uri ?? "",
+					storageOptionsJson: payload.storageOptionsJson?.trim()
+						? payload.storageOptionsJson
+						: "{}",
+				}
+				await addProfile()
+			}
+		)
+		unlistenUpdateProfile = await listen<UpdateProfilePayload>(
+			"profiles:update",
+			async ({ payload }) => {
+				clearMessages()
+				if (!payload.id) {
+					setError("未找到需要更新的连接档案")
+					return
+				}
+				await updateProfile({
+					id: payload.id,
+					name: payload.name ?? "",
+					uri: payload.uri ?? "",
+					storageOptionsJson: payload.storageOptionsJson?.trim()
+						? payload.storageOptionsJson
+						: "{}",
+				})
+			}
+		)
 	} catch (error) {
-		const message = error instanceof Error ? error.message : "打开文件夹选择器失败"
+		const message = error instanceof Error ? error.message : "注册新建连接监听失败"
 		setError(message)
 	}
-}
+})
+
+onBeforeUnmount(() => {
+	if (unlistenCreateProfile) {
+		unlistenCreateProfile()
+		unlistenCreateProfile = null
+	}
+	if (unlistenUpdateProfile) {
+		unlistenUpdateProfile()
+		unlistenUpdateProfile = null
+	}
+})
 
 function toggleCollapse() {
 	isCollapsed.value = !isCollapsed.value
 }
 
-function openCreateModal() {
-	// Always open first; avoid any transient state issues preventing the modal from showing.
-	isCreateModalOpen.value = true
+async function openCreateDialog() {
+	clearMessages()
+	setStatus("已打开新建连接")
 	try {
-		clearMessages()
-		setStatus("已打开新建连接")
-		const form = profileForm.value
-		if (form && !form.name && !form.uri) {
-			form.storageOptionsJson ||= "{}"
+		const existing = await WebviewWindow.getByLabel(createDialogLabel)
+		if (existing) {
+			await existing.setFocus()
+			return
 		}
+		const parent = getCurrentWindow()
+		const dialog = new WebviewWindow(createDialogLabel, {
+			url: "/#/dialog/new-connection",
+			title: "新建连接",
+			width: 520,
+			height: 520,
+			center: true,
+			resizable: false,
+			minimizable: false,
+			maximizable: false,
+			parent,
+		})
+		dialog.once("tauri://error", () => {
+			setError("打开新建连接窗口失败")
+		})
 	} catch (error) {
-		const message = error instanceof Error ? error.message : "打开新建连接弹窗失败"
+		const message = error instanceof Error ? error.message : "打开新建连接窗口失败"
 		setError(message)
 	}
 }
 
-function closeCreateModal() {
-	isCreateModalOpen.value = false
+async function openEditDialog(profileId: string) {
+	clearMessages()
+	setStatus("已打开编辑连接")
+	try {
+		const existing = await WebviewWindow.getByLabel(editDialogLabel)
+		if (existing) {
+			await existing.close()
+		}
+		const parent = getCurrentWindow()
+		const dialog = new WebviewWindow(editDialogLabel, {
+			url: `/#/dialog/edit-connection?profileId=${encodeURIComponent(profileId)}`,
+			title: "编辑连接",
+			width: 520,
+			height: 540,
+			center: true,
+			resizable: false,
+			minimizable: false,
+			maximizable: false,
+			parent,
+		})
+		dialog.once("tauri://error", () => {
+			setError("打开编辑连接窗口失败")
+		})
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "打开编辑连接窗口失败"
+		setError(message)
+	}
 }
 
-async function saveProfile() {
+async function handleDeleteProfile(profileId: string) {
 	clearMessages()
-	await addProfile()
-	if (!errorMessage.value) {
-		isCreateModalOpen.value = false
+	try {
+		resetConnection(profileId)
+		await deleteProfile(profileId)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "删除连接档案失败"
+		setError(message)
 	}
 }
 
@@ -148,12 +215,27 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 
 <template>
 	<aside
-		class="flex h-full shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 ease-out"
-		:style="{ width: `${sidebarWidth}px` }"
+		class="relative flex h-full shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 ease-out"
+		:style="{ width: sidebarWidth }"
 	>
+		<div class="absolute right-0 top-1/2 z-10 -translate-y-1/2 translate-x-1/2">
+			<NButton
+				size="tiny"
+				quaternary
+				circle
+				:aria-label="isCollapsed ? '展开侧边栏' : '收起侧边栏'"
+				:title="isCollapsed ? '展开侧边栏' : '收起侧边栏'"
+				class="bg-white shadow-sm ring-1 ring-slate-200 transition hover:ring-slate-300"
+				@click="toggleCollapse"
+			>
+				<ChevronRight v-if="isCollapsed" class="h-4 w-4" />
+				<ChevronLeft v-else class="h-4 w-4" />
+			</NButton>
+		</div>
+
 		<div
-			class="flex items-center px-4 pt-4"
-			:class="isCollapsed ? 'justify-center' : 'justify-between'"
+			class="flex items-center pt-4"
+			:class="isCollapsed ? 'justify-center px-3' : 'justify-between px-4'"
 		>
 			<div class="flex items-center gap-3">
 				<div
@@ -168,15 +250,14 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 			</div>
 			<div class="flex items-center gap-2">
 				<NTag v-if="!isCollapsed" size="small" type="info">v1</NTag>
-				<NButton size="small" quaternary @click="toggleCollapse">
-					<PanelLeftClose v-if="!isCollapsed" class="h-4 w-4" />
-					<PanelLeftOpen v-else class="h-4 w-4" />
-				</NButton>
 			</div>
 		</div>
 
 		<div class="mt-4 px-3" :class="isCollapsed ? 'px-2' : 'px-3'">
-			<div class="flex items-center gap-2" :class="isCollapsed ? 'justify-center' : ''">
+			<div
+				class="flex items-center gap-2"
+				:class="isCollapsed ? 'flex-col justify-center' : 'flex-row'"
+			>
 				<NPopover trigger="click" placement="bottom-start">
 					<template #trigger>
 						<NButton size="small" quaternary>
@@ -184,10 +265,10 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 							<span v-if="!isCollapsed" class="ml-2">筛选</span>
 						</NButton>
 					</template>
-					<div class="w-56 space-y-2">
+					<div class="w-56 space-y-2 p-2">
 						<div class="text-xs font-medium text-slate-700">连接类型</div>
 						<NRadioGroup v-model:value="filterKind" size="small">
-							<div class="grid grid-cols-2 gap-2">
+							<div class="filter-radio-grid grid grid-cols-2 gap-2 p-0.5">
 								<NRadioButton value="all">全部</NRadioButton>
 								<NRadioButton value="local">{{ getConnectionKindLabel("local") }}</NRadioButton>
 								<NRadioButton value="s3">{{ getConnectionKindLabel("s3") }}</NRadioButton>
@@ -199,7 +280,7 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 					</div>
 				</NPopover>
 
-				<NButton size="small" type="primary" @click.stop="openCreateModal">
+				<NButton size="small" type="primary" @click.stop="openCreateDialog">
 					<Plus class="h-4 w-4" />
 					<span v-if="!isCollapsed" class="ml-2">新建</span>
 				</NButton>
@@ -210,19 +291,25 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 			<div class="min-h-0 flex-1 overflow-y-auto">
 				<NEmpty v-if="!filteredProfiles.length" description="暂无连接档案" />
 				<template v-else>
-					<NVirtualList v-if="shouldVirtualize" :items="filteredProfiles" :item-size="92">
+					<NVirtualList
+						v-if="shouldVirtualize"
+						:items="filteredProfiles"
+						:item-size="virtualItemSize"
+					>
 						<template #default="{ item }">
 							<div class="pb-3">
 								<ConnectionItem
 									:key="item.id"
 									:profile="item"
-									:state="connectionStates[item.id]"
+									:state="connectionStates[item.id] ?? null"
 									:selected="item.id === activeProfileId"
 									:collapsed="isCollapsed"
 									@select="onSelectProfile(item.id)"
 									@connect="selectAndConnect(item.id)"
 									@refresh="selectAndRefresh(item.id)"
 									@open-table="(name) => selectAndOpenTable(item.id, name)"
+									@edit="openEditDialog(item.id)"
+									@delete="handleDeleteProfile(item.id)"
 								/>
 							</div>
 						</template>
@@ -232,82 +319,39 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 							v-for="profile in filteredProfiles"
 							:key="profile.id"
 							:profile="profile"
-							:state="connectionStates[profile.id]"
+							:state="connectionStates[profile.id] ?? null"
 							:selected="profile.id === activeProfileId"
 							:collapsed="isCollapsed"
 							@select="onSelectProfile(profile.id)"
 							@connect="selectAndConnect(profile.id)"
 							@refresh="selectAndRefresh(profile.id)"
 							@open-table="(name) => selectAndOpenTable(profile.id, name)"
+							@edit="openEditDialog(profile.id)"
+							@delete="handleDeleteProfile(profile.id)"
 						/>
 					</div>
 				</template>
 			</div>
 		</div>
 
-		<NModal
-			v-model:show="isCreateModalOpen"
-			:to="'body'"
-			:style="{ width: '520px' }"
-		>
-			<NCard title="新建连接" size="small" class="shadow-sm">
-				<div class="space-y-3">
-					<div class="space-y-1">
-						<label class="text-xs text-slate-500">连接名称</label>
-						<NInput v-model:value="profileForm.name" placeholder="例如：本地样例库" />
-					</div>
-					<div class="space-y-1">
-						<label class="text-xs text-slate-500">URI</label>
-						<div class="flex items-center gap-2">
-							<NInput
-								v-model:value="profileForm.uri"
-								class="flex-1"
-								:placeholder="uriPlaceholder"
-							/>
-							<NButton
-								v-if="showLocalPicker"
-								size="small"
-								quaternary
-								@click="pickLocalFolder"
-							>
-								<FolderOpen class="h-4 w-4" />
-								<span class="ml-1">选择文件夹</span>
-							</NButton>
-						</div>
-						<div v-if="showLocalPicker" class="text-xs text-slate-400">
-							选择 LanceDB 的数据库根目录（例如 sample-db）。如果误选了 items.lance 这类 *.lance 目录，会自动改用它的上级目录。
-						</div>
-					</div>
-					<div class="space-y-1">
-						<label class="text-xs text-slate-500">storageOptions (JSON)</label>
-						<NInput
-							v-model:value="profileForm.storageOptionsJson"
-							type="textarea"
-							:autosize="{ minRows: 4, maxRows: 10 }"
-							placeholder='{"aws_region": "us-east-1"}'
-						/>
-					</div>
-
-					<div class="flex items-center justify-end gap-2 pt-2">
-						<NButton
-							size="small"
-							quaternary
-							:disabled="isSavingProfile"
-							@click="closeCreateModal"
-						>
-							取消
-						</NButton>
-						<NButton
-							size="small"
-							type="primary"
-							:loading="isSavingProfile"
-							@click="saveProfile"
-						>
-							保存
-						</NButton>
-					</div>
-				</div>
-			</NCard>
-		</NModal>
 	</aside>
 </template>
+
+<style scoped>
+.filter-radio-grid {
+	overflow: visible;	
+}
+
+.filter-radio-grid :deep(.n-radio-button) {
+	border-radius: 8px !important;	
+}
+
+.filter-radio-grid :deep(.n-radio-button:not(:first-child)) {
+	border-left-width: 1px !important;
+}
+
+.filter-radio-grid :deep(.n-radio-button__content) {
+	justify-content: center;
+	width: 100%;
+}
+</style>

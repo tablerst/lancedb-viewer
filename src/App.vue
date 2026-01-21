@@ -2,6 +2,7 @@
 import { computed } from "vue"
 import { RouterView, useRoute, useRouter } from "vue-router"
 
+import StatusMessageBridge from "./components/StatusMessageBridge.vue"
 import Sidebar from "./components/sidebar/Sidebar.vue"
 import { useConnection } from "./composables/useConnection"
 import { useProfiles } from "./composables/useProfiles"
@@ -28,6 +29,9 @@ const {
 	profileForm,
 	isSavingProfile,
 	addProfile,
+	updateProfile,
+	deleteProfile,
+	setProfileLastConnected,
 	selectProfile,
 } = useProfiles({
 	onStatus: setStatus,
@@ -51,6 +55,7 @@ const {
 } = useConnection(profiles, activeProfileId, {
 	onStatus: setStatus,
 	onError: setError,
+	onConnected: setProfileLastConnected,
 })
 
 provideWorkspace({
@@ -60,6 +65,9 @@ provideWorkspace({
 	profileForm,
 	isSavingProfile,
 	addProfile,
+	updateProfile,
+	deleteProfile,
+	setProfileLastConnected,
 	selectProfile,
 	connectionStates,
 	activeConnection,
@@ -112,57 +120,67 @@ const workspaceTab = computed<WorkspaceName>({
 		void router.push({ name })
 	},
 })
+
+const isDialogRoute = computed(() => route.meta.layout === "dialog")
 </script>
 
 <template>
 	<NConfigProvider :theme-overrides="themeOverrides">
 		<NGlobalStyle />
-		<div class="h-screen w-screen overflow-hidden bg-slate-50">
-			<div class="flex h-full min-h-0">
-				<Sidebar
-					:profiles="profiles"
-					:active-profile-id="activeProfileId"
-					:connection-states="connectionStates"
-					:on-select-profile="selectProfile"
-					:on-connect-profile="connectProfile"
-					:on-refresh-tables="refreshTables"
-					:on-open-table="openTable"
-				/>
+		<NMessageProvider>
+			<StatusMessageBridge
+				:status-message="statusMessage"
+				:error-message="errorMessage"
+			/>
+			<div class="h-screen w-screen overflow-hidden bg-slate-50">
+				<div v-if="isDialogRoute" class="h-full w-full">
+					<RouterView />
+				</div>
+				<div v-else class="flex h-full min-h-0">
+					<Sidebar
+						:profiles="profiles"
+						:active-profile-id="activeProfileId"
+						:connection-states="connectionStates"
+						:on-select-profile="selectProfile"
+						:on-connect-profile="connectProfile"
+						:on-refresh-tables="refreshTables"
+						:on-open-table="openTable"
+					/>
 
-				<main class="min-w-0 flex-1 overflow-y-auto">
-					<div class="p-6">
-						<div class="mx-auto w-full max-w-[1400px] space-y-4">
-							<div
-								class="sticky top-0 z-10 -mx-6 bg-slate-50/90 px-6 pb-4 pt-6 backdrop-blur"
-							>
-								<NCard size="small" title="连接状态" class="shadow-sm">
-									<div class="space-y-2">
-										<NAlert v-if="statusMessage" type="success" :bordered="false">
-											{{ statusMessage }}
-										</NAlert>
-										<NAlert v-if="errorMessage" type="error" :bordered="false">
-											{{ errorMessage }}
-										</NAlert>
-										<div class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-											<div class="flex items-center gap-2">
-												<span
-													class="h-2 w-2 rounded-full"
-													:class="
-														activeConnectionSummary.connected
-															? 'bg-emerald-500'
-															: 'bg-slate-300'
-													"
-												/>
-												<span>{{ activeConnectionSummary.label }}</span>
+					<main class="min-w-0 flex-1 overflow-y-auto">
+						<div class="p-6">
+							<div class="mx-auto w-full max-w-[1400px] space-y-4">
+								<div
+									class="sticky top-0 z-10 -mx-6 bg-slate-50/90 px-6 pb-4 pt-6 backdrop-blur"
+								>
+									<NCard size="small" title="连接状态" class="shadow-sm">
+										<div class="space-y-2">
+											<NAlert v-if="statusMessage" type="success" :bordered="false">
+												{{ statusMessage }}
+											</NAlert>
+											<NAlert v-if="errorMessage" type="error" :bordered="false">
+												{{ errorMessage }}
+											</NAlert>
+											<div class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+												<div class="flex items-center gap-2">
+													<span
+														class="h-2 w-2 rounded-full"
+														:class="
+															activeConnectionSummary.connected
+																? 'bg-emerald-500'
+																: 'bg-slate-300'
+														"
+													/>
+													<span>{{ activeConnectionSummary.label }}</span>
+												</div>
+												<NTag size="small" :type="activeConnectionSummary.kindTagType">
+													{{ activeConnectionSummary.kindLabel }}
+												</NTag>
+												<span class="text-slate-400">•</span>
+												<span>
+													{{ connectionId ? `表数量：${tables.length}` : "尚未连接数据库" }}
+												</span>
 											</div>
-											<NTag size="small" :type="activeConnectionSummary.kindTagType">
-												{{ activeConnectionSummary.kindLabel }}
-											</NTag>
-											<span class="text-slate-400">•</span>
-											<span>
-												{{ connectionId ? `表数量：${tables.length}` : "尚未连接数据库" }}
-											</span>
-										</div>
 									</div>
 								</NCard>
 
@@ -180,5 +198,6 @@ const workspaceTab = computed<WorkspaceName>({
 				</main>
 			</div>
 		</div>
+		</NMessageProvider>
 	</NConfigProvider>
 </template>

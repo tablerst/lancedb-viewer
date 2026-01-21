@@ -96,6 +96,98 @@ export function useProfiles(options: UseProfilesOptions = {}) {
 		}
 	}
 
+	async function updateProfile(input: {
+		id: string
+		name: string
+		uri: string
+		storageOptionsJson: string
+	}) {
+		if (isSavingProfile.value) {
+			return
+		}
+
+		const name = input.name.trim()
+		const uriRaw = input.uri.trim()
+		if (!name || !uriRaw) {
+			options.onError?.("请填写连接名称与 URI")
+			return
+		}
+
+		const existing = profiles.value.find((profile) => profile.id === input.id)
+		if (!existing) {
+			options.onError?.("连接档案不存在")
+			return
+		}
+
+		try {
+			isSavingProfile.value = true
+			const normalizedUri = normalizeConnectUri(uriRaw)
+			if (!normalizedUri.trim()) {
+				options.onError?.("URI 无效")
+				return
+			}
+			if (getConnectionKind(normalizedUri) === "local" && uriRaw !== normalizedUri) {
+				options.onStatus?.("已规范化本地路径（例如移除 file:// 或将 *.lance 转为数据库目录）")
+			}
+			const storageOptions = parseStorageOptions(input.storageOptionsJson)
+			const updated: StoredProfile = {
+				...existing,
+				name,
+				uri: normalizedUri,
+				storageOptions,
+			}
+			profiles.value = profiles.value.map((profile) =>
+				profile.id === input.id ? updated : profile
+			)
+			await persistProfiles()
+			options.onStatus?.("连接档案已更新")
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "更新连接档案失败"
+			options.onError?.(message)
+		} finally {
+			isSavingProfile.value = false
+		}
+	}
+
+	async function deleteProfile(profileId: string) {
+		if (isSavingProfile.value) {
+			return
+		}
+
+		const existing = profiles.value.find((profile) => profile.id === profileId)
+		if (!existing) {
+			options.onError?.("连接档案不存在")
+			return
+		}
+
+		try {
+			isSavingProfile.value = true
+			const nextProfiles = profiles.value.filter((profile) => profile.id !== profileId)
+			profiles.value = nextProfiles
+			if (activeProfileId.value === profileId) {
+				activeProfileId.value = nextProfiles[0]?.id ?? null
+			}
+			await persistProfiles()
+			options.onStatus?.("连接档案已删除")
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "删除连接档案失败"
+			options.onError?.(message)
+		} finally {
+			isSavingProfile.value = false
+		}
+	}
+
+	async function setProfileLastConnected(profileId: string, connectedAt: string) {
+		const existing = profiles.value.find((profile) => profile.id === profileId)
+		if (!existing) {
+			return
+		}
+		profiles.value = profiles.value.map((profile) =>
+			profile.id === profileId ? { ...profile, lastConnectedAt: connectedAt } : profile
+		)
+		await persistProfiles()
+	}
+
 	async function selectProfile(profileId: string) {
 		activeProfileId.value = profileId
 		await persistProfiles()
@@ -108,6 +200,9 @@ export function useProfiles(options: UseProfilesOptions = {}) {
 		profileForm,
 		isSavingProfile,
 		addProfile,
+		updateProfile,
+		deleteProfile,
+		setProfileLastConnected,
 		selectProfile,
 	}
 }

@@ -8,6 +8,7 @@ export interface StoredProfile {
 	storageOptions: Record<string, string>
 	options?: ConnectOptions
 	auth?: AuthDescriptor
+	lastConnectedAt?: string | null
 }
 
 export interface ProfileState {
@@ -21,6 +22,7 @@ export interface NewProfileInput {
 	storageOptions?: Record<string, string>
 	options?: ConnectOptions
 	auth?: AuthDescriptor
+	lastConnectedAt?: string | null
 }
 
 export function toConnectProfile(profile: StoredProfile): ConnectProfile {

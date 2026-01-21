@@ -33,5 +33,6 @@ export function createProfile(input: NewProfileInput): StoredProfile {
 		storageOptions: input.storageOptions ?? {},
 		options: input.options,
 		auth: input.auth,
+		lastConnectedAt: input.lastConnectedAt ?? null,
 	}
 }

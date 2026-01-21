@@ -1,5 +1,5 @@
 import type { Ref } from "vue"
-import { computed, ref, watch } from "vue"
+import { computed, ref, shallowRef, watch } from "vue"
 
 import type { SchemaDefinition, TableInfo } from "../ipc/v1"
 import {
@@ -26,6 +26,7 @@ export interface ConnectionState {
 interface UseConnectionOptions {
 	onStatus?: (message: string) => void
 	onError?: (message: string) => void
+	onConnected?: (profileId: string, connectedAt: string) => void | Promise<void>
 }
 
 function createConnectionState(): ConnectionState {
@@ -46,7 +47,7 @@ export function useConnection(
 	activeProfileId: Ref<string | null>,
 	options: UseConnectionOptions = {}
 ) {
-	const connectionStates = ref<Record<string, ConnectionState>>({})
+	const connectionStates = shallowRef<Record<string, ConnectionState>>({})
 
 	function getState(profileId: string) {
 		const existing = connectionStates.value[profileId]
@@ -73,17 +74,28 @@ export function useConnection(
 		return id ? getState(id) : null
 	})
 
-	const connectionId = computed(() => activeConnection.value?.connectionId.value ?? null)
-	const tables = computed(() => activeConnection.value?.tables.value ?? [])
-	const activeTableName = computed(() => activeConnection.value?.activeTableName.value ?? null)
-	const activeTableId = computed(() => activeConnection.value?.activeTableId.value ?? null)
-	const schema = computed(() => activeConnection.value?.schema.value ?? null)
-	const isConnecting = computed(() => activeConnection.value?.isConnecting.value ?? false)
-	const isRefreshing = computed(() => activeConnection.value?.isRefreshing.value ?? false)
-	const isOpening = computed(() => activeConnection.value?.isOpening.value ?? false)
+	const connectionId = computed(() => activeConnection.value?.connectionId?.value ?? null)
+	const tables = computed(() => activeConnection.value?.tables?.value ?? [])
+	const activeTableName = computed(() => activeConnection.value?.activeTableName?.value ?? null)
+	const activeTableId = computed(() => activeConnection.value?.activeTableId?.value ?? null)
+	const schema = computed(() => activeConnection.value?.schema?.value ?? null)
+	const isConnecting = computed(() => activeConnection.value?.isConnecting?.value ?? false)
+	const isRefreshing = computed(() => activeConnection.value?.isRefreshing?.value ?? false)
+	const isOpening = computed(() => activeConnection.value?.isOpening?.value ?? false)
 
 	function resetConnection(profileId: string) {
 		const state = getState(profileId)
+		if (
+			!state.connectionId ||
+			!state.tables ||
+			!state.activeTableName ||
+			!state.activeTableId ||
+			!state.schema
+		) {
+			const next = createConnectionState()
+			connectionStates.value = { ...connectionStates.value, [profileId]: next }
+			return
+		}
 		state.connectionId.value = null
 		state.tables.value = []
 		state.activeTableName.value = null
@@ -109,6 +121,12 @@ export function useConnection(
 			connectProfile.auth ??= { type: "none" }
 			const response = unwrapEnvelope(await connectV1(connectProfile))
 			state.connectionId.value = response.connectionId
+			try {
+				await options.onConnected?.(profileId, new Date().toISOString())
+			} catch (error) {
+				const message = error instanceof Error ? error.message : "更新最近连接时间失败"
+				options.onError?.(message)
+			}
 			options.onStatus?.(`已连接：${response.name}`)
 			await refreshTables(profileId)
 		} catch (error) {

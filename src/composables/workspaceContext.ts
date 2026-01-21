@@ -18,6 +18,14 @@ export interface WorkspaceContext {
 	profileForm: Ref<ProfileFormState>
 	isSavingProfile: Ref<boolean>
 	addProfile: () => Promise<void>
+	updateProfile: (input: {
+		id: string
+		name: string
+		uri: string
+		storageOptionsJson: string
+	}) => Promise<void>
+	deleteProfile: (profileId: string) => Promise<void>
+	setProfileLastConnected: (profileId: string, connectedAt: string) => Promise<void>
 	selectProfile: (profileId: string) => Promise<void>
 
 	connectionStates: Ref<Record<string, ConnectionState>>
