@@ -8,6 +8,7 @@ import { scanV1, unwrapEnvelope } from "../lib/tauriClient"
 
 const {
 	activeProfileId,
+	activeProfile,
 	activeTableName,
 	activeTableId,
 	schema,
@@ -53,6 +54,7 @@ const scanError = ref("")
 const dataRows = ref<unknown[]>([])
 const nextOffset = ref<number | null>(null)
 const hasOpenTables = computed(() => openedTables.value.length > 0)
+const connectionLabel = computed(() => activeProfile.value?.name ?? "未连接")
 
 const visibleColumns = computed(() =>
 	selectedColumns.value.length ? selectedColumns.value : allFieldNames.value
@@ -83,6 +85,10 @@ function addOpenedTable(name: string) {
 	if (!openedTables.value.some((table) => table.name === name)) {
 		openedTables.value = [...openedTables.value, { name }]
 	}
+}
+
+function getTabLabel(tableName: string) {
+	return `${connectionLabel.value}-${tableName}`
 }
 
 function compareValues(a: unknown, b: unknown) {
@@ -284,126 +290,124 @@ function handlePageSizeChange(nextSize: number) {
 </script>
 
 <template>
-	<NCard size="small" title="表详情" class="shadow-sm">
+	<div class="space-y-4">
 		<NEmpty v-if="!hasOpenTables" description="选择表以查看详情" />
-		<div v-else class="space-y-4">
-			<NTabs v-model:value="activeTableTab" type="line">
-				<NTabPane
-					v-for="table in openedTables"
-					:key="table.name"
-					:name="table.name"
-					:tab="table.name"
-				>
-					<template v-if="activeTableTab === table.name">
-						<NTabs type="line">
-							<NTabPane name="schema" tab="Schema">
-								<NDataTable
-									class="data-table"
-									size="small"
-									:columns="schemaColumns"
-									:data="schemaData"
-									:bordered="false"
-								/>
-							</NTabPane>
-							<NTabPane name="data" tab="数据浏览">
-								<div class="data-tab-scroll min-h-[420px] max-h-[70vh] overflow-y-auto">
-									<div
-										class="sticky top-0 z-10 bg-white/95 px-3 py-2 backdrop-blur"
-									>
-										<div class="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
-											<span>当前表：{{ activeTableName }}</span>
-											<span class="text-slate-400">•</span>
-											<span v-if="isOpening">正在加载 schema…</span>
-										</div>
-										<div class="mt-2 grid gap-2 xl:grid-cols-5">
-											<div class="space-y-1 xl:col-span-2">
-												<label class="text-xs text-slate-500">过滤表达式</label>
-												<NInput
-													v-model:value="filterExpression"
-													placeholder='only_if("id > 5")'
-													:disabled="isScanning || !hasActiveTable"
-												/>
-											</div>
-											<div class="flex flex-wrap items-end gap-2 xl:col-span-3">
-												<NButton
-													type="primary"
-													:loading="isScanning"
-													:disabled="!hasActiveTable"
-													@click="runScan"
-												>
-													查询
-												</NButton>
-												<NButton
-													secondary
-													:disabled="!hasActiveTable"
-													@click="selectAllColumns"
-												>
-													全部列
-												</NButton>
-												<NButton
-													quaternary
-													:disabled="!hasActiveTable"
-													@click="clearColumns"
-												>
-													取消投影
-												</NButton>
-											</div>
-										</div>
-
-										<div class="mt-2 space-y-1">
-											<label class="text-xs text-slate-500">列投影</label>
-											<NSelect
-												v-model:value="selectedColumns"
-												:options="columnOptions"
-												multiple
-												clearable
+		<NTabs v-else v-model:value="activeTableTab" type="line">
+			<NTabPane
+				v-for="table in openedTables"
+				:key="table.name"
+				:name="table.name"
+				:tab="getTabLabel(table.name)"
+			>
+				<template v-if="activeTableTab === table.name">
+					<NTabs type="line">
+						<NTabPane name="schema" tab="Schema">
+							<NDataTable
+								class="data-table"
+								size="small"
+								:columns="schemaColumns"
+								:data="schemaData"
+								:bordered="false"
+							/>
+						</NTabPane>
+						<NTabPane name="data" tab="数据浏览">
+							<div class="data-tab-scroll min-h-[420px] max-h-[70vh] overflow-y-auto">
+								<div
+									class="sticky top-0 z-10 bg-white/95 px-3 py-2 backdrop-blur"
+								>
+									<div class="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
+										<span>当前表：{{ activeTableName }}</span>
+										<span class="text-slate-400">•</span>
+										<span v-if="isOpening">正在加载 schema…</span>
+									</div>
+									<div class="mt-2 grid gap-2 xl:grid-cols-5">
+										<div class="space-y-1 xl:col-span-2">
+											<label class="text-xs text-slate-500">过滤表达式</label>
+											<NInput
+												v-model:value="filterExpression"
+												placeholder='only_if("id > 5")'
 												:disabled="isScanning || !hasActiveTable"
 											/>
 										</div>
+										<div class="flex flex-wrap items-end gap-2 xl:col-span-3">
+											<NButton
+												type="primary"
+												:loading="isScanning"
+												:disabled="!hasActiveTable"
+												@click="runScan"
+											>
+												查询
+											</NButton>
+											<NButton
+												secondary
+												:disabled="!hasActiveTable"
+												@click="selectAllColumns"
+											>
+												全部列
+											</NButton>
+											<NButton
+												quaternary
+												:disabled="!hasActiveTable"
+												@click="clearColumns"
+											>
+												取消投影
+											</NButton>
+										</div>
 									</div>
 
-									<div class="space-y-3 px-3 pb-3 pt-2">
-										<NAlert v-if="scanError" type="error" :bordered="false">
-											{{ scanError }}
-										</NAlert>
-
-										<NDataTable
-											class="data-table"
-											size="small"
-											:columns="tableColumns"
-											:data="tableData"
-											:loading="isScanning"
-											:bordered="false"
-											:row-key="(row) => row.__rowId"
-										/>
-									</div>
-
-									<div
-										class="sticky bottom-0 z-10 flex items-center justify-between gap-2 border-t border-slate-100 bg-white/95 px-3 py-2 backdrop-blur"
-									>
-										<NPagination
-											size="small"
-											:page="page"
-											:page-size="limit"
-											:page-count="pageCount"
+									<div class="mt-2 space-y-1">
+										<label class="text-xs text-slate-500">列投影</label>
+										<NSelect
+											v-model:value="selectedColumns"
+											:options="columnOptions"
+											multiple
+											clearable
 											:disabled="isScanning || !hasActiveTable"
-											show-size-picker
-											:page-sizes="[10, 20, 50, 100]"
-											@update:page="handlePageChange"
-											@update:page-size="handlePageSizeChange"
 										/>
-										<span class="text-xs text-slate-500">
-											offset: {{ offset }} · limit: {{ limit }}
-										</span>
 									</div>
 								</div>
-							</NTabPane>
-						</NTabs>
-					</template>
-				</NTabPane>
-			</NTabs>
-		</div>
-	</NCard>
+
+								<div class="space-y-3 px-3 pb-3 pt-2">
+									<NAlert v-if="scanError" type="error" :bordered="false">
+										{{ scanError }}
+									</NAlert>
+
+									<NDataTable
+										class="data-table"
+										size="small"
+										:columns="tableColumns"
+										:data="tableData"
+										:loading="isScanning"
+										:bordered="false"
+										:row-key="(row) => row.__rowId"
+									/>
+								</div>
+
+								<div
+									class="sticky bottom-0 z-10 flex items-center justify-between gap-2 border-t border-slate-100 bg-white/95 px-3 py-2 backdrop-blur"
+								>
+									<NPagination
+										size="small"
+										:page="page"
+										:page-size="limit"
+										:page-count="pageCount"
+										:disabled="isScanning || !hasActiveTable"
+										show-size-picker
+										:page-sizes="[10, 20, 50, 100]"
+										@update:page="handlePageChange"
+										@update:page-size="handlePageSizeChange"
+									/>
+									<span class="text-xs text-slate-500">
+										offset: {{ offset }} · limit: {{ limit }}
+									</span>
+								</div>
+							</div>
+						</NTabPane>
+					</NTabs>
+				</template>
+			</NTabPane>
+		</NTabs>
+	</div>
 </template>
 
 <style scoped>
