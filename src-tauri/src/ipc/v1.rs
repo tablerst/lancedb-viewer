@@ -84,6 +84,35 @@ impl Default for DataFormat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WriteDataMode {
+    Append,
+    Overwrite,
+}
+
+impl Default for WriteDataMode {
+    fn default() -> Self {
+        WriteDataMode::Append
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexTypeV1 {
+    Auto,
+    BTree,
+    Bitmap,
+    LabelList,
+    Fts,
+    IvfFlat,
+    IvfSq,
+    IvfPq,
+    IvfRq,
+    IvfHnswPq,
+    IvfHnswSq,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AuthDescriptor {
     None,
@@ -158,6 +187,77 @@ pub struct ListTablesResponseV1 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DropTableRequestV1 {
+    pub connection_id: String,
+    pub table_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DropTableResponseV1 {
+    pub table_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListIndexesRequestV1 {
+    pub table_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexDefinitionV1 {
+    pub name: String,
+    pub index_type: IndexTypeV1,
+    pub columns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListIndexesResponseV1 {
+    pub indexes: Vec<IndexDefinitionV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateIndexRequestV1 {
+    pub table_id: String,
+    pub columns: Vec<String>,
+    pub index_type: IndexTypeV1,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub replace: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateIndexResponseV1 {
+    pub table_id: String,
+    pub index_type: IndexTypeV1,
+    pub columns: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DropIndexRequestV1 {
+    pub table_id: String,
+    pub index_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DropIndexResponseV1 {
+    pub table_id: String,
+    pub index_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenTableRequestV1 {
     pub connection_id: String,
     pub table_name: String,
@@ -174,6 +274,45 @@ pub struct TableHandle {
 #[serde(rename_all = "camelCase")]
 pub struct GetSchemaRequestV1 {
     pub table_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FieldDataType {
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    Float32,
+    Float64,
+    Boolean,
+    Utf8,
+    LargeUtf8,
+    Binary,
+    LargeBinary,
+    FixedSizeListFloat32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaFieldInput {
+    pub name: String,
+    pub data_type: FieldDataType,
+    pub nullable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vector_length: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaDefinitionInput {
+    pub fields: Vec<SchemaFieldInput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,6 +366,135 @@ pub struct ScanRequestV1 {
     pub limit: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteRowsRequestV1 {
+    pub table_id: String,
+    pub rows: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub mode: WriteDataMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteRowsResponseV1 {
+    pub table_id: String,
+    pub rows: usize,
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateColumnInputV1 {
+    pub column: String,
+    pub expr: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateRowsRequestV1 {
+    pub table_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    pub updates: Vec<UpdateColumnInputV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateRowsResponseV1 {
+    pub table_id: String,
+    pub rows_updated: u64,
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteRowsRequestV1 {
+    pub table_id: String,
+    pub filter: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteRowsResponseV1 {
+    pub table_id: String,
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateTableRequestV1 {
+    pub connection_id: String,
+    pub table_name: String,
+    pub schema: SchemaDefinitionInput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateTableResponseV1 {
+    pub table_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddColumnsRequestV1 {
+    pub table_id: String,
+    pub columns: SchemaDefinitionInput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddColumnsResponseV1 {
+    pub table_id: String,
+    pub added: Vec<String>,
+    pub schema: SchemaDefinition,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnAlterationInput {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rename: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nullable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_type: Option<FieldDataType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vector_length: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlterColumnsRequestV1 {
+    pub table_id: String,
+    pub columns: Vec<ColumnAlterationInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlterColumnsResponseV1 {
+    pub table_id: String,
+    pub updated: Vec<String>,
+    pub schema: SchemaDefinition,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DropColumnsRequestV1 {
+    pub table_id: String,
+    pub columns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DropColumnsResponseV1 {
+    pub table_id: String,
+    pub dropped: Vec<String>,
+    pub schema: SchemaDefinition,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

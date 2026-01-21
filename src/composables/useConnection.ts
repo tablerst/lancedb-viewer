@@ -103,6 +103,13 @@ export function useConnection(
 		state.schema.value = null
 	}
 
+	function clearActiveTable(profileId: string) {
+		const state = getState(profileId)
+		state.activeTableName.value = null
+		state.activeTableId.value = null
+		state.schema.value = null
+	}
+
 	async function connectProfile(profileId: string) {
 		const profile = profiles.value.find((item) => item.id === profileId) ?? null
 		if (!profile) {
@@ -185,6 +192,20 @@ export function useConnection(
 		}
 	}
 
+	async function refreshSchema(profileId: string) {
+		const state = getState(profileId)
+		const tableId = state.activeTableId.value
+		if (!tableId) {
+			return
+		}
+		try {
+			state.schema.value = unwrapEnvelope(await getSchemaV1(tableId))
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "刷新 Schema 失败"
+			options.onError?.(message)
+		}
+	}
+
 	return {
 		connectionStates,
 		activeConnection,
@@ -199,6 +220,8 @@ export function useConnection(
 		connectProfile,
 		refreshTables,
 		openTable,
+		refreshSchema,
 		resetConnection,
+		clearActiveTable,
 	}
 }

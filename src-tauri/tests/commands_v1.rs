@@ -12,9 +12,13 @@ use lancedb::index::Index;
 use tempfile::tempdir;
 
 use lancedb_viewer_lib::ipc::v1::{
-    ConnectProfile, ConnectRequestV1, DataFormat, ErrorCode, FtsSearchRequestV1,
-    GetSchemaRequestV1, ListTablesRequestV1, OpenTableRequestV1, QueryFilterRequestV1,
-    ScanRequestV1, VectorSearchRequestV1,
+    AddColumnsRequestV1, AlterColumnsRequestV1, ColumnAlterationInput, ConnectProfile,
+    ConnectRequestV1, CreateIndexRequestV1, CreateTableRequestV1, DataFormat,
+    DeleteRowsRequestV1, DropColumnsRequestV1, DropIndexRequestV1, DropTableRequestV1, ErrorCode,
+    FieldDataType, FtsSearchRequestV1, GetSchemaRequestV1, IndexTypeV1,
+    ListIndexesRequestV1, ListTablesRequestV1, OpenTableRequestV1, QueryFilterRequestV1,
+    ScanRequestV1, SchemaDefinitionInput, SchemaFieldInput, UpdateColumnInputV1,
+    UpdateRowsRequestV1, VectorSearchRequestV1, WriteDataMode, WriteRowsRequestV1,
 };
 use lancedb_viewer_lib::services::v1 as services_v1;
 use lancedb_viewer_lib::state::AppState;
@@ -207,6 +211,211 @@ async fn list_tables_and_get_schema() {
 }
 
 #[tokio::test]
+async fn drop_table_removes_table() {
+    let harness = create_command_harness().await;
+
+    let dropped = services_v1::drop_table_v1(
+        &harness.state,
+        DropTableRequestV1 {
+            connection_id: harness.connection_id.clone(),
+            table_name: harness.table_name.clone(),
+            namespace: None,
+        },
+    )
+    .await;
+
+    assert!(dropped.ok, "drop_table should succeed: {:?}", dropped.error);
+
+    let listed = services_v1::list_tables_v1(
+        &harness.state,
+        ListTablesRequestV1 {
+            connection_id: harness.connection_id.clone(),
+        },
+    )
+    .await;
+
+    assert!(listed.ok, "list_tables should succeed: {:?}", listed.error);
+    let tables = listed.data.expect("tables").tables;
+    assert!(
+        !tables.iter().any(|table| table.name == harness.table_name),
+        "expected dropped table to be removed"
+    );
+}
+
+#[tokio::test]
+async fn create_table_and_schema_evolution() {
+    let harness = create_command_harness().await;
+
+    let created = services_v1::create_table_v1(
+        &harness.state,
+        CreateTableRequestV1 {
+            connection_id: harness.connection_id.clone(),
+            table_name: "created_table".to_string(),
+            schema: SchemaDefinitionInput {
+                fields: vec![
+                    SchemaFieldInput {
+                        name: "id".to_string(),
+                        data_type: FieldDataType::Int32,
+                        nullable: false,
+                        metadata: None,
+                        vector_length: None,
+                    },
+                    SchemaFieldInput {
+                        name: "name".to_string(),
+                        data_type: FieldDataType::Utf8,
+                        nullable: true,
+                        metadata: None,
+                        vector_length: None,
+                    },
+                ],
+            },
+        },
+    )
+    .await;
+
+    assert!(created.ok, "create_table should succeed: {:?}", created.error);
+    let created = created.data.expect("create table data");
+
+    let added = services_v1::add_columns_v1(
+        &harness.state,
+        AddColumnsRequestV1 {
+            table_id: created.table_id.clone(),
+            columns: SchemaDefinitionInput {
+                fields: vec![SchemaFieldInput {
+                    name: "notes".to_string(),
+                    data_type: FieldDataType::Utf8,
+                    nullable: true,
+                    metadata: None,
+                    vector_length: None,
+                }],
+            },
+        },
+    )
+    .await;
+
+    assert!(added.ok, "add_columns should succeed: {:?}", added.error);
+    let added = added.data.expect("add_columns data");
+    assert!(
+        added.schema.fields.iter().any(|field| field.name == "notes"),
+        "expected notes column to be added"
+    );
+
+    let altered = services_v1::alter_columns_v1(
+        &harness.state,
+        AlterColumnsRequestV1 {
+            table_id: created.table_id.clone(),
+            columns: vec![ColumnAlterationInput {
+                path: "notes".to_string(),
+                rename: Some("notes_text".to_string()),
+                nullable: None,
+                data_type: None,
+                vector_length: None,
+            }],
+        },
+    )
+    .await;
+
+    assert!(altered.ok, "alter_columns should succeed: {:?}", altered.error);
+    let altered = altered.data.expect("alter_columns data");
+    assert!(
+        altered
+            .schema
+            .fields
+            .iter()
+            .any(|field| field.name == "notes_text"),
+        "expected notes column to be renamed"
+    );
+    assert!(
+        !altered
+            .schema
+            .fields
+            .iter()
+            .any(|field| field.name == "notes"),
+        "expected old notes column to be removed"
+    );
+
+    let dropped = services_v1::drop_columns_v1(
+        &harness.state,
+        DropColumnsRequestV1 {
+            table_id: created.table_id.clone(),
+            columns: vec!["notes_text".to_string()],
+        },
+    )
+    .await;
+
+    assert!(dropped.ok, "drop_columns should succeed: {:?}", dropped.error);
+    let dropped = dropped.data.expect("drop_columns data");
+    assert!(
+        !dropped
+            .schema
+            .fields
+            .iter()
+            .any(|field| field.name == "notes_text"),
+        "expected notes_text column to be dropped"
+    );
+
+    let cleanup = services_v1::drop_table_v1(
+        &harness.state,
+        DropTableRequestV1 {
+            connection_id: harness.connection_id.clone(),
+            table_name: created.name,
+            namespace: None,
+        },
+    )
+    .await;
+
+    assert!(cleanup.ok, "cleanup drop_table should succeed: {:?}", cleanup.error);
+}
+
+#[tokio::test]
+async fn write_update_delete_rows() {
+    let harness = create_command_harness().await;
+
+    let write = services_v1::write_rows_v1(
+        &harness.state,
+        WriteRowsRequestV1 {
+            table_id: harness.table_id.clone(),
+            rows: vec![
+                serde_json::json!({"id": 999, "text": "new", "vector": [0.1, 0.2, 0.3]}),
+                serde_json::json!({"id": 1000, "text": "new", "vector": [0.2, 0.3, 0.4]}),
+            ],
+            mode: WriteDataMode::Append,
+        },
+    )
+    .await;
+
+    assert!(write.ok, "write_rows should succeed: {:?}", write.error);
+
+    let updated = services_v1::update_rows_v1(
+        &harness.state,
+        UpdateRowsRequestV1 {
+            table_id: harness.table_id.clone(),
+            filter: Some("id = 999".to_string()),
+            updates: vec![UpdateColumnInputV1 {
+                column: "text".to_string(),
+                expr: "'updated'".to_string(),
+            }],
+        },
+    )
+    .await;
+
+    assert!(updated.ok, "update_rows should succeed: {:?}", updated.error);
+    let updated = updated.data.expect("update rows data");
+    assert!(updated.rows_updated >= 1);
+
+    let deleted = services_v1::delete_rows_v1(
+        &harness.state,
+        DeleteRowsRequestV1 {
+            table_id: harness.table_id.clone(),
+            filter: "id = 999".to_string(),
+        },
+    )
+    .await;
+
+    assert!(deleted.ok, "delete_rows should succeed: {:?}", deleted.error);
+}
+
+#[tokio::test]
 async fn scan_json_and_arrow() {
     let harness = create_command_harness().await;
 
@@ -350,6 +559,84 @@ async fn query_filter_vector_search_and_fts() {
         }
         _ => panic!("expected json chunk"),
     }
+}
+
+#[tokio::test]
+async fn list_create_drop_indexes() {
+    let harness = create_command_harness().await;
+
+    let listed = services_v1::list_indexes_v1(
+        &harness.state,
+        ListIndexesRequestV1 {
+            table_id: harness.table_id.clone(),
+        },
+    )
+    .await;
+
+    assert!(listed.ok, "list_indexes should succeed: {:?}", listed.error);
+
+    let created = services_v1::create_index_v1(
+        &harness.state,
+        CreateIndexRequestV1 {
+            table_id: harness.table_id.clone(),
+            columns: vec!["id".to_string()],
+            index_type: IndexTypeV1::BTree,
+            name: Some("id_btree".to_string()),
+            replace: true,
+        },
+    )
+    .await;
+
+    assert!(created.ok, "create_index should succeed: {:?}", created.error);
+
+    let listed_after = services_v1::list_indexes_v1(
+        &harness.state,
+        ListIndexesRequestV1 {
+            table_id: harness.table_id.clone(),
+        },
+    )
+    .await;
+
+    assert!(
+        listed_after.ok,
+        "list_indexes after create should succeed: {:?}",
+        listed_after.error
+    );
+    let indexes = listed_after.data.expect("index list").indexes;
+    assert!(
+        indexes.iter().any(|index| index.name == "id_btree"),
+        "expected id_btree index to exist"
+    );
+
+    let dropped = services_v1::drop_index_v1(
+        &harness.state,
+        DropIndexRequestV1 {
+            table_id: harness.table_id.clone(),
+            index_name: "id_btree".to_string(),
+        },
+    )
+    .await;
+
+    assert!(dropped.ok, "drop_index should succeed: {:?}", dropped.error);
+
+    let listed_final = services_v1::list_indexes_v1(
+        &harness.state,
+        ListIndexesRequestV1 {
+            table_id: harness.table_id.clone(),
+        },
+    )
+    .await;
+
+    assert!(
+        listed_final.ok,
+        "list_indexes after drop should succeed: {:?}",
+        listed_final.error
+    );
+    let indexes = listed_final.data.expect("index list").indexes;
+    assert!(
+        !indexes.iter().any(|index| index.name == "id_btree"),
+        "expected id_btree index to be removed"
+    );
 }
 
 #[tokio::test]

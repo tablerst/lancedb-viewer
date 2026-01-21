@@ -1,22 +1,41 @@
+use std::io::Cursor;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use arrow_array::RecordBatch;
+use arrow_array::{RecordBatch, RecordBatchIterator};
 use arrow_ipc::writer::StreamWriter;
-use arrow_json::ArrayWriter;
-use arrow_schema::Schema;
+use arrow_json::{ArrayWriter, ReaderBuilder};
+use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use base64::{engine::general_purpose, Engine as _};
 use futures_util::TryStreamExt;
-use lancedb::index::scalar::FullTextSearchQuery;
+use lancedb::index::scalar::{
+    BTreeIndexBuilder, BitmapIndexBuilder, FtsIndexBuilder, FullTextSearchQuery,
+    LabelListIndexBuilder,
+};
+use lancedb::index::vector::{
+    IvfFlatIndexBuilder, IvfHnswPqIndexBuilder, IvfHnswSqIndexBuilder, IvfPqIndexBuilder,
+    IvfRqIndexBuilder, IvfSqIndexBuilder,
+};
+use lancedb::index::{Index, IndexType};
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
+use lancedb::table::{AddDataMode, ColumnAlteration, NewColumnTransform};
+use lancedb::Table;
 use log::{debug, error, info, trace, warn};
 
 use crate::domain::connect::infer_backend_kind;
 use crate::ipc::v1::{
-    ArrowChunk, ConnectRequestV1, ConnectResponseV1, DataChunk, DataFormat, ErrorCode,
-    FtsSearchRequestV1, GetSchemaRequestV1, JsonChunk, ListTablesRequestV1,
-    ListTablesResponseV1, OpenTableRequestV1, QueryFilterRequestV1, QueryResponseV1,
-    ResultEnvelope, ScanRequestV1, ScanResponseV1, SchemaDefinition, TableHandle, TableInfo,
-    VectorSearchRequestV1,
+    AddColumnsRequestV1, AddColumnsResponseV1, AlterColumnsRequestV1, AlterColumnsResponseV1,
+    ArrowChunk, ColumnAlterationInput, ConnectRequestV1, ConnectResponseV1,
+    CreateIndexRequestV1, CreateIndexResponseV1, CreateTableRequestV1, CreateTableResponseV1,
+    DataChunk, DataFormat, DeleteRowsRequestV1, DeleteRowsResponseV1, DropColumnsRequestV1,
+    DropColumnsResponseV1, DropIndexRequestV1, DropIndexResponseV1, DropTableRequestV1,
+    DropTableResponseV1, ErrorCode, FieldDataType, FtsSearchRequestV1, GetSchemaRequestV1,
+    IndexDefinitionV1, IndexTypeV1, JsonChunk, ListIndexesRequestV1, ListIndexesResponseV1,
+    ListTablesRequestV1, ListTablesResponseV1, OpenTableRequestV1, QueryFilterRequestV1,
+    QueryResponseV1, ResultEnvelope, ScanRequestV1, ScanResponseV1, SchemaDefinition,
+    SchemaDefinitionInput, SchemaFieldInput, TableHandle, TableInfo, UpdateRowsRequestV1,
+    UpdateRowsResponseV1, VectorSearchRequestV1, WriteDataMode, WriteRowsRequestV1,
+    WriteRowsResponseV1,
 };
 use crate::state::AppState;
 
@@ -138,6 +157,142 @@ async fn execute_query_batches(query: impl ExecutableQuery) -> Result<Vec<Record
         .map_err(|error| error.to_string())
 }
 
+fn json_rows_to_batches(schema: SchemaRef, rows: &[serde_json::Value]) -> Result<Vec<RecordBatch>, String> {
+    if rows.is_empty() {
+        return Err("rows cannot be empty".to_string());
+    }
+    let mut buffer = String::new();
+    for row in rows {
+        let line = serde_json::to_string(row).map_err(|error| error.to_string())?;
+        buffer.push_str(&line);
+        buffer.push('\n');
+    }
+    let cursor = Cursor::new(buffer.into_bytes());
+    let mut reader = ReaderBuilder::new(schema).build(cursor).map_err(|error| error.to_string())?;
+    let mut batches = Vec::new();
+    while let Some(batch) = reader.next() {
+        let batch = batch.map_err(|error| error.to_string())?;
+        batches.push(batch);
+    }
+    if batches.is_empty() {
+        return Err("no rows parsed from input".to_string());
+    }
+    Ok(batches)
+}
+
+fn to_arrow_data_type(
+    data_type: &FieldDataType,
+    vector_length: Option<i32>,
+) -> Result<DataType, String> {
+    match data_type {
+        FieldDataType::Int8 => Ok(DataType::Int8),
+        FieldDataType::Int16 => Ok(DataType::Int16),
+        FieldDataType::Int32 => Ok(DataType::Int32),
+        FieldDataType::Int64 => Ok(DataType::Int64),
+        FieldDataType::UInt8 => Ok(DataType::UInt8),
+        FieldDataType::UInt16 => Ok(DataType::UInt16),
+        FieldDataType::UInt32 => Ok(DataType::UInt32),
+        FieldDataType::UInt64 => Ok(DataType::UInt64),
+        FieldDataType::Float32 => Ok(DataType::Float32),
+        FieldDataType::Float64 => Ok(DataType::Float64),
+        FieldDataType::Boolean => Ok(DataType::Boolean),
+        FieldDataType::Utf8 => Ok(DataType::Utf8),
+        FieldDataType::LargeUtf8 => Ok(DataType::LargeUtf8),
+        FieldDataType::Binary => Ok(DataType::Binary),
+        FieldDataType::LargeBinary => Ok(DataType::LargeBinary),
+        FieldDataType::FixedSizeListFloat32 => {
+            let length = vector_length.ok_or_else(|| {
+                "vector_length is required for fixed_size_list_float32".to_string()
+            })?;
+            if length <= 0 {
+                return Err("vector_length must be greater than 0".to_string());
+            }
+            let item_field = Arc::new(Field::new("item", DataType::Float32, true));
+            Ok(DataType::FixedSizeList(item_field, length))
+        }
+    }
+}
+
+fn to_arrow_field(input: &SchemaFieldInput) -> Result<Field, String> {
+    let data_type = to_arrow_data_type(&input.data_type, input.vector_length)?;
+    let mut field = Field::new(&input.name, data_type, input.nullable);
+    if let Some(metadata) = &input.metadata {
+        field = field.with_metadata(metadata.clone());
+    }
+    Ok(field)
+}
+
+fn to_arrow_schema(input: &SchemaDefinitionInput) -> Result<SchemaRef, String> {
+    if input.fields.is_empty() {
+        return Err("schema must contain at least one field".to_string());
+    }
+    let fields = input
+        .fields
+        .iter()
+        .map(to_arrow_field)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Arc::new(Schema::new(fields)))
+}
+
+fn sanitize_index_columns(columns: &[String]) -> Result<Vec<String>, String> {
+    if columns.is_empty() {
+        return Err("columns cannot be empty".to_string());
+    }
+
+    let mut cleaned = Vec::new();
+    for column in columns {
+        let trimmed = column.trim();
+        if trimmed.is_empty() {
+            return Err("index column cannot be empty".to_string());
+        }
+        if !cleaned.iter().any(|value: &String| value == trimmed) {
+            cleaned.push(trimmed.to_string());
+        }
+    }
+
+    if cleaned.is_empty() {
+        return Err("columns cannot be empty".to_string());
+    }
+
+    Ok(cleaned)
+}
+
+fn to_index_type_v1(index_type: &IndexType) -> IndexTypeV1 {
+    match index_type {
+        IndexType::BTree => IndexTypeV1::BTree,
+        IndexType::Bitmap => IndexTypeV1::Bitmap,
+        IndexType::LabelList => IndexTypeV1::LabelList,
+        IndexType::FTS => IndexTypeV1::Fts,
+        IndexType::IvfFlat => IndexTypeV1::IvfFlat,
+        IndexType::IvfSq => IndexTypeV1::IvfSq,
+        IndexType::IvfPq => IndexTypeV1::IvfPq,
+        IndexType::IvfRq => IndexTypeV1::IvfRq,
+        IndexType::IvfHnswPq => IndexTypeV1::IvfHnswPq,
+        IndexType::IvfHnswSq => IndexTypeV1::IvfHnswSq,
+    }
+}
+
+fn to_lancedb_index(index_type: &IndexTypeV1) -> Index {
+    match index_type {
+        IndexTypeV1::Auto => Index::Auto,
+        IndexTypeV1::BTree => Index::BTree(BTreeIndexBuilder::default()),
+        IndexTypeV1::Bitmap => Index::Bitmap(BitmapIndexBuilder::default()),
+        IndexTypeV1::LabelList => Index::LabelList(LabelListIndexBuilder::default()),
+        IndexTypeV1::Fts => Index::FTS(FtsIndexBuilder::default()),
+        IndexTypeV1::IvfFlat => Index::IvfFlat(IvfFlatIndexBuilder::default()),
+        IndexTypeV1::IvfSq => Index::IvfSq(IvfSqIndexBuilder::default()),
+        IndexTypeV1::IvfPq => Index::IvfPq(IvfPqIndexBuilder::default()),
+        IndexTypeV1::IvfRq => Index::IvfRq(IvfRqIndexBuilder::default()),
+        IndexTypeV1::IvfHnswPq => Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()),
+        IndexTypeV1::IvfHnswSq => Index::IvfHnswSq(IvfHnswSqIndexBuilder::default()),
+    }
+}
+
+async fn read_table_schema(table: &Table) -> Result<SchemaDefinition, String> {
+    let schema = table.schema().await.map_err(|error| error.to_string())?;
+    Ok(SchemaDefinition::from_arrow_schema(schema.as_ref()))
+}
+
 pub async fn connect_v1(
     state: &AppState,
     request: ConnectRequestV1,
@@ -248,6 +403,697 @@ pub async fn list_tables_v1(
     );
 
     ResultEnvelope::ok(ListTablesResponseV1 { tables })
+}
+
+pub async fn drop_table_v1(
+    state: &AppState,
+    request: DropTableRequestV1,
+) -> ResultEnvelope<DropTableResponseV1> {
+    let started_at = Instant::now();
+    info!(
+        "drop_table_v1 start connection_id={} table=\"{}\"",
+        request.connection_id, request.table_name
+    );
+
+    let connection = match state.connections.lock() {
+        Ok(manager) => manager.get_connection(&request.connection_id),
+        Err(_) => {
+            error!("drop_table_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(connection) = connection else {
+        warn!(
+            "drop_table_v1 connection not found connection_id={}",
+            request.connection_id
+        );
+        return ResultEnvelope::err(ErrorCode::NotFound, "connection not found");
+    };
+
+    let namespace = request.namespace.unwrap_or_default();
+    if let Err(error) = connection.drop_table(&request.table_name, &namespace).await {
+        error!(
+            "drop_table_v1 failed connection_id={} table=\"{}\" error={}",
+            request.connection_id, request.table_name, error
+        );
+        return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+    }
+
+    info!(
+        "drop_table_v1 ok connection_id={} table=\"{}\" elapsed_ms={}",
+        request.connection_id,
+        request.table_name,
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(DropTableResponseV1 {
+        table_name: request.table_name,
+    })
+}
+
+pub async fn list_indexes_v1(
+    state: &AppState,
+    request: ListIndexesRequestV1,
+) -> ResultEnvelope<ListIndexesResponseV1> {
+    let started_at = Instant::now();
+    info!("list_indexes_v1 start table_id={}", request.table_id);
+
+    let table = match state.connections.lock() {
+        Ok(manager) => manager.get_table(&request.table_id),
+        Err(_) => {
+            error!("list_indexes_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(table) = table else {
+        warn!("list_indexes_v1 table not found table_id={}", request.table_id);
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
+    };
+
+    let index_configs = match table.list_indices().await {
+        Ok(configs) => configs,
+        Err(error) => {
+            error!(
+                "list_indexes_v1 failed table_id={} error={}",
+                request.table_id, error
+            );
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+        }
+    };
+
+    let indexes = index_configs
+        .into_iter()
+        .map(|config| IndexDefinitionV1 {
+            name: config.name,
+            index_type: to_index_type_v1(&config.index_type),
+            columns: config.columns,
+        })
+        .collect::<Vec<_>>();
+
+    info!(
+        "list_indexes_v1 ok table_id={} indexes={} elapsed_ms={}",
+        request.table_id,
+        indexes.len(),
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(ListIndexesResponseV1 { indexes })
+}
+
+pub async fn create_index_v1(
+    state: &AppState,
+    request: CreateIndexRequestV1,
+) -> ResultEnvelope<CreateIndexResponseV1> {
+    let started_at = Instant::now();
+    info!(
+        "create_index_v1 start table_id={} columns={} index_type={:?}",
+        request.table_id,
+        request.columns.len(),
+        request.index_type
+    );
+
+    let columns = match sanitize_index_columns(&request.columns) {
+        Ok(columns) => columns,
+        Err(error) => {
+            warn!("create_index_v1 invalid columns error={}", error);
+            return ResultEnvelope::err(ErrorCode::InvalidArgument, error);
+        }
+    };
+
+    let name = request
+        .name
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+    if request.name.is_some() && name.is_none() {
+        return ResultEnvelope::err(ErrorCode::InvalidArgument, "index name cannot be empty");
+    }
+    let resolved_name = name.map(str::to_string);
+
+    let table = match state.connections.lock() {
+        Ok(manager) => manager.get_table(&request.table_id),
+        Err(_) => {
+            error!("create_index_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(table) = table else {
+        warn!("create_index_v1 table not found table_id={}", request.table_id);
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
+    };
+
+    let index = to_lancedb_index(&request.index_type);
+    let mut builder = table.create_index(&columns, index).replace(request.replace);
+    if let Some(name) = resolved_name.as_ref() {
+        builder = builder.name(name.clone());
+    }
+
+    if let Err(error) = builder.execute().await {
+        error!(
+            "create_index_v1 failed table_id={} error={}",
+            request.table_id, error
+        );
+        return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+    }
+
+    info!(
+        "create_index_v1 ok table_id={} elapsed_ms={}",
+        request.table_id,
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(CreateIndexResponseV1 {
+        table_id: request.table_id,
+        index_type: request.index_type,
+        columns,
+        name: resolved_name,
+    })
+}
+
+pub async fn drop_index_v1(
+    state: &AppState,
+    request: DropIndexRequestV1,
+) -> ResultEnvelope<DropIndexResponseV1> {
+    let started_at = Instant::now();
+    info!(
+        "drop_index_v1 start table_id={} index_name=\"{}\"",
+        request.table_id, request.index_name
+    );
+
+    let index_name = request.index_name.trim();
+    if index_name.is_empty() {
+        return ResultEnvelope::err(ErrorCode::InvalidArgument, "index name cannot be empty");
+    }
+
+    let table = match state.connections.lock() {
+        Ok(manager) => manager.get_table(&request.table_id),
+        Err(_) => {
+            error!("drop_index_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(table) = table else {
+        warn!("drop_index_v1 table not found table_id={}", request.table_id);
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
+    };
+
+    if let Err(error) = table.drop_index(index_name).await {
+        error!(
+            "drop_index_v1 failed table_id={} error={}",
+            request.table_id, error
+        );
+        return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+    }
+
+    info!(
+        "drop_index_v1 ok table_id={} elapsed_ms={}",
+        request.table_id,
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(DropIndexResponseV1 {
+        table_id: request.table_id,
+        index_name: index_name.to_string(),
+    })
+}
+
+pub async fn create_table_v1(
+    state: &AppState,
+    request: CreateTableRequestV1,
+) -> ResultEnvelope<CreateTableResponseV1> {
+    let started_at = Instant::now();
+    info!(
+        "create_table_v1 start connection_id={} table=\"{}\"",
+        request.connection_id, request.table_name
+    );
+
+    if request.table_name.trim().is_empty() {
+        return ResultEnvelope::err(ErrorCode::InvalidArgument, "table name cannot be empty");
+    }
+
+    let connection = match state.connections.lock() {
+        Ok(manager) => manager.get_connection(&request.connection_id),
+        Err(_) => {
+            error!("create_table_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(connection) = connection else {
+        warn!(
+            "create_table_v1 connection not found connection_id={}",
+            request.connection_id
+        );
+        return ResultEnvelope::err(ErrorCode::NotFound, "connection not found");
+    };
+
+    let schema = match to_arrow_schema(&request.schema) {
+        Ok(schema) => schema,
+        Err(error) => {
+            warn!("create_table_v1 invalid schema error={}", error);
+            return ResultEnvelope::err(ErrorCode::InvalidArgument, error);
+        }
+    };
+
+    let table = match connection
+        .create_empty_table(&request.table_name, schema)
+        .execute()
+        .await
+    {
+        Ok(table) => table,
+        Err(error) => {
+            error!(
+                "create_table_v1 failed connection_id={} table=\"{}\" error={}",
+                request.connection_id, request.table_name, error
+            );
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+        }
+    };
+
+    let table_id = match state.connections.lock() {
+        Ok(mut manager) => manager.insert_table(request.table_name.clone(), table),
+        Err(_) => {
+            error!("create_table_v1 failed to lock table manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock table manager");
+        }
+    };
+
+    info!(
+        "create_table_v1 ok connection_id={} table_id={} table=\"{}\" elapsed_ms={}",
+        request.connection_id,
+        table_id,
+        request.table_name,
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(CreateTableResponseV1 {
+        table_id,
+        name: request.table_name,
+    })
+}
+
+pub async fn add_columns_v1(
+    state: &AppState,
+    request: AddColumnsRequestV1,
+) -> ResultEnvelope<AddColumnsResponseV1> {
+    let started_at = Instant::now();
+    info!("add_columns_v1 start table_id={}", request.table_id);
+
+    let table = match state.connections.lock() {
+        Ok(manager) => manager.get_table(&request.table_id),
+        Err(_) => {
+            error!("add_columns_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(table) = table else {
+        warn!("add_columns_v1 table not found table_id={}", request.table_id);
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
+    };
+
+    let schema = match to_arrow_schema(&request.columns) {
+        Ok(schema) => schema,
+        Err(error) => {
+            warn!("add_columns_v1 invalid schema error={}", error);
+            return ResultEnvelope::err(ErrorCode::InvalidArgument, error);
+        }
+    };
+
+    let transforms = NewColumnTransform::AllNulls(schema);
+    if let Err(error) = table.add_columns(transforms, None).await {
+        error!("add_columns_v1 failed table_id={} error={}", request.table_id, error);
+        return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+    }
+
+    let updated_schema = match read_table_schema(&table).await {
+        Ok(schema) => schema,
+        Err(error) => {
+            error!("add_columns_v1 schema reload failed table_id={} error={}", request.table_id, error);
+            return ResultEnvelope::err(ErrorCode::Internal, error);
+        }
+    };
+
+    let added = request
+        .columns
+        .fields
+        .iter()
+        .map(|field| field.name.clone())
+        .collect::<Vec<_>>();
+
+    info!(
+        "add_columns_v1 ok table_id={} added={} elapsed_ms={}",
+        request.table_id,
+        added.len(),
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(AddColumnsResponseV1 {
+        table_id: request.table_id,
+        added,
+        schema: updated_schema,
+    })
+}
+
+fn build_column_alteration(input: &ColumnAlterationInput) -> Result<ColumnAlteration, String> {
+    if input.path.trim().is_empty() {
+        return Err("column path cannot be empty".to_string());
+    }
+    let has_change = input
+        .rename
+        .as_ref()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+        || input.nullable.is_some()
+        || input.data_type.is_some();
+    if !has_change {
+        return Err("column alteration must specify rename, nullable, or data_type".to_string());
+    }
+    let mut alteration = ColumnAlteration::new(input.path.trim().to_string());
+    if let Some(rename) = input.rename.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        alteration = alteration.rename(rename.to_string());
+    }
+    if let Some(nullable) = input.nullable {
+        alteration = alteration.set_nullable(nullable);
+    }
+    if let Some(data_type) = input.data_type.as_ref() {
+        let arrow_type = to_arrow_data_type(data_type, input.vector_length)?;
+        alteration = alteration.cast_to(arrow_type);
+    }
+    Ok(alteration)
+}
+
+pub async fn alter_columns_v1(
+    state: &AppState,
+    request: AlterColumnsRequestV1,
+) -> ResultEnvelope<AlterColumnsResponseV1> {
+    let started_at = Instant::now();
+    info!("alter_columns_v1 start table_id={}", request.table_id);
+
+    let table = match state.connections.lock() {
+        Ok(manager) => manager.get_table(&request.table_id),
+        Err(_) => {
+            error!("alter_columns_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(table) = table else {
+        warn!("alter_columns_v1 table not found table_id={}", request.table_id);
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
+    };
+
+    if request.columns.is_empty() {
+        return ResultEnvelope::err(ErrorCode::InvalidArgument, "no column alterations provided");
+    }
+
+    let mut updated_paths = Vec::new();
+    let alterations = match request
+        .columns
+        .iter()
+        .map(|input| {
+            let alteration = build_column_alteration(input)?;
+            updated_paths.push(alteration.path.clone());
+            Ok(alteration)
+        })
+        .collect::<Result<Vec<_>, String>>()
+    {
+        Ok(result) => result,
+        Err(error) => {
+            warn!("alter_columns_v1 invalid alteration error={}", error);
+            return ResultEnvelope::err(ErrorCode::InvalidArgument, error);
+        }
+    };
+
+    if let Err(error) = table.alter_columns(&alterations).await {
+        error!("alter_columns_v1 failed table_id={} error={}", request.table_id, error);
+        return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+    }
+
+    let updated_schema = match read_table_schema(&table).await {
+        Ok(schema) => schema,
+        Err(error) => {
+            error!("alter_columns_v1 schema reload failed table_id={} error={}", request.table_id, error);
+            return ResultEnvelope::err(ErrorCode::Internal, error);
+        }
+    };
+
+    info!(
+        "alter_columns_v1 ok table_id={} updated={} elapsed_ms={}",
+        request.table_id,
+        updated_paths.len(),
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(AlterColumnsResponseV1 {
+        table_id: request.table_id,
+        updated: updated_paths,
+        schema: updated_schema,
+    })
+}
+
+pub async fn drop_columns_v1(
+    state: &AppState,
+    request: DropColumnsRequestV1,
+) -> ResultEnvelope<DropColumnsResponseV1> {
+    let started_at = Instant::now();
+    info!("drop_columns_v1 start table_id={}", request.table_id);
+
+    if request.columns.is_empty() {
+        return ResultEnvelope::err(ErrorCode::InvalidArgument, "no columns specified");
+    }
+
+    let table = match state.connections.lock() {
+        Ok(manager) => manager.get_table(&request.table_id),
+        Err(_) => {
+            error!("drop_columns_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(table) = table else {
+        warn!("drop_columns_v1 table not found table_id={}", request.table_id);
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
+    };
+
+    let column_refs = request
+        .columns
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    if let Err(error) = table.drop_columns(&column_refs).await {
+        error!("drop_columns_v1 failed table_id={} error={}", request.table_id, error);
+        return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+    }
+
+    let updated_schema = match read_table_schema(&table).await {
+        Ok(schema) => schema,
+        Err(error) => {
+            error!("drop_columns_v1 schema reload failed table_id={} error={}", request.table_id, error);
+            return ResultEnvelope::err(ErrorCode::Internal, error);
+        }
+    };
+
+    info!(
+        "drop_columns_v1 ok table_id={} dropped={} elapsed_ms={}",
+        request.table_id,
+        request.columns.len(),
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(DropColumnsResponseV1 {
+        table_id: request.table_id,
+        dropped: request.columns,
+        schema: updated_schema,
+    })
+}
+
+pub async fn write_rows_v1(
+    state: &AppState,
+    request: WriteRowsRequestV1,
+) -> ResultEnvelope<WriteRowsResponseV1> {
+    let started_at = Instant::now();
+    info!(
+        "write_rows_v1 start table_id={} rows={} mode={:?}",
+        request.table_id,
+        request.rows.len(),
+        request.mode
+    );
+
+    let table = match state.connections.lock() {
+        Ok(manager) => manager.get_table(&request.table_id),
+        Err(_) => {
+            error!("write_rows_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(table) = table else {
+        warn!("write_rows_v1 table not found table_id={}", request.table_id);
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
+    };
+
+    let schema = match table.schema().await {
+        Ok(schema) => schema,
+        Err(error) => {
+            error!("write_rows_v1 failed to read schema table_id={} error={}", request.table_id, error);
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+        }
+    };
+
+    let batches = match json_rows_to_batches(schema.clone(), &request.rows) {
+        Ok(batches) => batches,
+        Err(error) => {
+            warn!("write_rows_v1 invalid rows table_id={} error={}", request.table_id, error);
+            return ResultEnvelope::err(ErrorCode::InvalidArgument, error);
+        }
+    };
+
+    let batch_iter = RecordBatchIterator::new(batches.into_iter().map(Ok), schema.clone());
+    let mut builder = table.add(batch_iter);
+    if matches!(request.mode, WriteDataMode::Overwrite) {
+        builder = builder.mode(AddDataMode::Overwrite);
+    }
+
+    let result = match builder.execute().await {
+        Ok(result) => result,
+        Err(error) => {
+            error!("write_rows_v1 failed table_id={} error={}", request.table_id, error);
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+        }
+    };
+
+    info!(
+        "write_rows_v1 ok table_id={} rows={} version={} elapsed_ms={}",
+        request.table_id,
+        request.rows.len(),
+        result.version,
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(WriteRowsResponseV1 {
+        table_id: request.table_id,
+        rows: request.rows.len(),
+        version: result.version,
+    })
+}
+
+pub async fn update_rows_v1(
+    state: &AppState,
+    request: UpdateRowsRequestV1,
+) -> ResultEnvelope<UpdateRowsResponseV1> {
+    let started_at = Instant::now();
+    info!(
+        "update_rows_v1 start table_id={} updates={}",
+        request.table_id,
+        request.updates.len()
+    );
+
+    if request.updates.is_empty() {
+        return ResultEnvelope::err(ErrorCode::InvalidArgument, "no updates specified");
+    }
+
+    let table = match state.connections.lock() {
+        Ok(manager) => manager.get_table(&request.table_id),
+        Err(_) => {
+            error!("update_rows_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(table) = table else {
+        warn!("update_rows_v1 table not found table_id={}", request.table_id);
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
+    };
+
+    let mut builder = table.update();
+    if let Some(filter) = request.filter.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+        builder = builder.only_if(filter.to_string());
+    }
+
+    for update in &request.updates {
+        let column = update.column.trim();
+        let expr = update.expr.trim();
+        if column.is_empty() || expr.is_empty() {
+            return ResultEnvelope::err(
+                ErrorCode::InvalidArgument,
+                "update column and expression cannot be empty",
+            );
+        }
+        builder = builder.column(column.to_string(), expr.to_string());
+    }
+
+    let result = match builder.execute().await {
+        Ok(result) => result,
+        Err(error) => {
+            error!("update_rows_v1 failed table_id={} error={}", request.table_id, error);
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+        }
+    };
+
+    info!(
+        "update_rows_v1 ok table_id={} rows_updated={} version={} elapsed_ms={}",
+        request.table_id,
+        result.rows_updated,
+        result.version,
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(UpdateRowsResponseV1 {
+        table_id: request.table_id,
+        rows_updated: result.rows_updated,
+        version: result.version,
+    })
+}
+
+pub async fn delete_rows_v1(
+    state: &AppState,
+    request: DeleteRowsRequestV1,
+) -> ResultEnvelope<DeleteRowsResponseV1> {
+    let started_at = Instant::now();
+    info!("delete_rows_v1 start table_id={}", request.table_id);
+
+    let filter = request.filter.trim();
+    if filter.is_empty() {
+        return ResultEnvelope::err(ErrorCode::InvalidArgument, "filter cannot be empty");
+    }
+
+    let table = match state.connections.lock() {
+        Ok(manager) => manager.get_table(&request.table_id),
+        Err(_) => {
+            error!("delete_rows_v1 failed to lock connection manager");
+            return ResultEnvelope::err(ErrorCode::Internal, "failed to lock connection manager");
+        }
+    };
+
+    let Some(table) = table else {
+        warn!("delete_rows_v1 table not found table_id={}", request.table_id);
+        return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
+    };
+
+    let result = match table.delete(filter).await {
+        Ok(result) => result,
+        Err(error) => {
+            error!("delete_rows_v1 failed table_id={} error={}", request.table_id, error);
+            return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
+        }
+    };
+
+    info!(
+        "delete_rows_v1 ok table_id={} version={} elapsed_ms={}",
+        request.table_id,
+        result.version,
+        started_at.elapsed().as_millis()
+    );
+
+    ResultEnvelope::ok(DeleteRowsResponseV1 {
+        table_id: request.table_id,
+        version: result.version,
+    })
 }
 
 pub async fn open_table_v1(

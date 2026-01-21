@@ -1,18 +1,33 @@
 import { invoke } from "@tauri-apps/api/core"
 
 import type {
+	AddColumnsResponseV1,
+	AlterColumnsResponseV1,
 	ConnectProfile,
 	ConnectResponseV1,
+	CreateTableResponseV1,
+	CreateIndexResponseV1,
+	DropColumnsResponseV1,
+	DropIndexResponseV1,
+	DropTableResponseV1,
+	FieldDataType,
 	FtsSearchRequestV1,
+	IndexTypeV1,
 	ListTablesResponseV1,
+	ListIndexesResponseV1,
+	DeleteRowsResponseV1,
 	QueryFilterRequestV1,
 	QueryResponseV1,
 	ResultEnvelope,
 	ScanRequestV1,
 	ScanResponseV1,
 	SchemaDefinition,
+	SchemaDefinitionInput,
 	TableHandle,
+	UpdateRowsResponseV1,
 	VectorSearchRequestV1,
+	WriteDataMode,
+	WriteRowsResponseV1,
 } from "../ipc/v1"
 
 function normalizeInvokeError(error: unknown, fallback: string): Error {
@@ -63,6 +78,45 @@ export async function listTablesV1(
 	return invokeV1("list_tables_v1", { request: { connectionId } })
 }
 
+export async function dropTableV1(
+	connectionId: string,
+	tableName: string,
+	namespace?: string[]
+): Promise<ResultEnvelope<DropTableResponseV1>> {
+	return invokeV1("drop_table_v1", { request: { connectionId, tableName, namespace } })
+}
+
+export async function listIndexesV1(
+	tableId: string
+): Promise<ResultEnvelope<ListIndexesResponseV1>> {
+	return invokeV1("list_indexes_v1", { request: { tableId } })
+}
+
+export async function createIndexV1(request: {
+	tableId: string
+	columns: string[]
+	indexType: IndexTypeV1
+	name?: string
+	replace?: boolean
+}): Promise<ResultEnvelope<CreateIndexResponseV1>> {
+	return invokeV1("create_index_v1", { request })
+}
+
+export async function dropIndexV1(
+	tableId: string,
+	indexName: string
+): Promise<ResultEnvelope<DropIndexResponseV1>> {
+	return invokeV1("drop_index_v1", { request: { tableId, indexName } })
+}
+
+export async function createTableV1(
+	connectionId: string,
+	tableName: string,
+	schema: SchemaDefinitionInput
+): Promise<ResultEnvelope<CreateTableResponseV1>> {
+	return invokeV1("create_table_v1", { request: { connectionId, tableName, schema } })
+}
+
 export async function openTableV1(
 	connectionId: string,
 	tableName: string
@@ -74,8 +128,62 @@ export async function getSchemaV1(tableId: string): Promise<ResultEnvelope<Schem
 	return invokeV1("get_schema_v1", { request: { tableId } })
 }
 
+export async function addColumnsV1(
+	tableId: string,
+	columns: SchemaDefinitionInput
+): Promise<ResultEnvelope<AddColumnsResponseV1>> {
+	return invokeV1("add_columns_v1", { request: { tableId, columns } })
+}
+
+export async function alterColumnsV1(
+	request: {
+		tableId: string
+		columns: {
+			path: string
+			rename?: string
+			nullable?: boolean
+			dataType?: FieldDataType
+			vectorLength?: number
+		}[]
+	}
+): Promise<ResultEnvelope<AlterColumnsResponseV1>> {
+	return invokeV1("alter_columns_v1", { request })
+}
+
+export async function dropColumnsV1(
+	tableId: string,
+	columns: string[]
+): Promise<ResultEnvelope<DropColumnsResponseV1>> {
+	return invokeV1("drop_columns_v1", { request: { tableId, columns } })
+}
+
 export async function scanV1(request: ScanRequestV1): Promise<ResultEnvelope<ScanResponseV1>> {
 	return invokeV1("scan_v1", { request })
+}
+
+export async function writeRowsV1(
+	tableId: string,
+	rows: unknown[],
+	mode: WriteDataMode
+): Promise<ResultEnvelope<WriteRowsResponseV1>> {
+	return invokeV1("write_rows_v1", { request: { tableId, rows, mode } })
+}
+
+export async function updateRowsV1(
+	request: {
+		tableId: string
+		filter?: string
+		updates: { column: string; expr: string }[]
+	}
+): Promise<ResultEnvelope<UpdateRowsResponseV1>> {
+	return invokeV1("update_rows_v1", { request })
+}
+
+export async function deleteRowsV1(
+	tableId: string,
+	filter: string
+): Promise<ResultEnvelope<DeleteRowsResponseV1>> {
+	return invokeV1("delete_rows_v1", { request: { tableId, filter } })
 }
 
 export async function queryFilterV1(

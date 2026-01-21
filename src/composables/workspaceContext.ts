@@ -41,7 +41,9 @@ export interface WorkspaceContext {
 	connectProfile: (profileId: string) => Promise<void>
 	refreshTables: (profileId: string) => Promise<void>
 	openTable: (profileId: string, name: string) => Promise<void>
+	refreshSchema: (profileId: string) => Promise<void>
 	resetConnection: (profileId: string) => void
+	clearActiveTable: (profileId: string) => void
 
 	statusMessage: Ref<string>
 	errorMessage: Ref<string>

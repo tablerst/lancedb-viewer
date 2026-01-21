@@ -2,8 +2,18 @@
 import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow"
-import { ChevronLeft, ChevronRight, Database, Filter, Plus } from "lucide-vue-next"
+import {
+	ChevronLeft,
+	ChevronRight,
+	Database,
+	Filter,
+	LayoutGrid,
+	ListChecks,
+	Plus,
+	Search,
+} from "lucide-vue-next"
 import { computed, onBeforeUnmount, onMounted, ref } from "vue"
+import { useRoute, useRouter } from "vue-router"
 
 import type { ConnectionState } from "../../composables/useConnection"
 import { useWorkspace } from "../../composables/workspaceContext"
@@ -23,6 +33,8 @@ const props = defineProps<{
 }>()
 
 const isCollapsed = ref(false)
+const router = useRouter()
+const route = useRoute()
 
 const {
 	profileForm,
@@ -71,6 +83,23 @@ const shouldVirtualize = computed(() => isCollapsed.value && filteredProfiles.va
 
 const sidebarWidth = computed(() => (isCollapsed.value ? collapsedWidth : expandedWidth))
 const virtualItemSize = computed(() => (isCollapsed.value ? collapsedItemSize : 92))
+
+const navItems = [
+	{ key: "explorer", label: "资源浏览", to: "/", icon: LayoutGrid },
+	{ key: "search", label: "检索", to: "/search", icon: Search },
+	{ key: "capabilities", label: "能力地图", to: "/capabilities", icon: ListChecks },
+] as const
+
+function isActiveNav(to: string) {
+	return route.path === to
+}
+
+function navigate(to: string) {
+	if (route.path === to) {
+		return
+	}
+	void router.push(to)
+}
 
 onMounted(async () => {
 	try {
@@ -250,6 +279,29 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 			</div>
 			<div class="flex items-center gap-2">
 				<NTag v-if="!isCollapsed" size="small" type="info">v1</NTag>
+			</div>
+		</div>
+
+		<div class="mt-3" :class="isCollapsed ? 'px-2' : 'px-3'">
+			<div
+				class="flex gap-2"
+				:class="isCollapsed ? 'flex-col items-center' : 'flex-row'"
+			>
+				<NButton
+					v-for="item in navItems"
+					:key="item.key"
+					size="small"
+					quaternary
+					:title="item.label"
+					:class="[
+						isActiveNav(item.to) ? 'text-sky-600 bg-sky-50/80' : 'text-slate-600',
+						isCollapsed ? 'h-10 w-10 justify-center' : 'px-3',
+					]"
+					@click="navigate(item.to)"
+				>
+					<component :is="item.icon" class="h-4 w-4" />
+					<span v-if="!isCollapsed" class="ml-2">{{ item.label }}</span>
+				</NButton>
 			</div>
 		</div>
 
