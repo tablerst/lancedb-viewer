@@ -44,7 +44,7 @@
 - `uri`: `/path/to/db`、`s3://bucket/path`、`db://host:port` 等
 - `storageOptions`: 作为扩展键值对传入 LanceDB（与官方文档一致）
 - `options.readConsistencyIntervalSeconds`: 读取一致性间隔（可选）
-- `auth`: 预留字段（后续 Stronghold 接入）
+- `auth`: 认证描述（支持 inline/secret_ref，推荐 Stronghold）
 
 ## 开发
 
@@ -73,13 +73,15 @@
 - `core:default`
 - `opener:default`
 - `store:default`
+- `stronghold:default`
 
 并包含：
 
 - `log:default`
 - `dialog:default`
 
-敏感凭证尚未落盘，后续会接入 Stronghold 并扩展 `auth` 字段。
+凭证已通过 Stronghold 存储，连接档案仅保存 `secret_ref` 引用与元数据。
+凭证管理页可查看 Stronghold 条目并清理未引用凭证；连接档案更新/删除会自动回收未引用凭证。
 
 ## Roadmap
 

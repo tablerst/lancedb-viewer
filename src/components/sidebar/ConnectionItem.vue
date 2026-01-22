@@ -21,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
 	(e: "select"): void
 	(e: "connect"): void
+	(e: "disconnect"): void
 	(e: "refresh"): void
 	(e: "open-table", name: string): void
 	(e: "edit"): void
@@ -29,6 +30,7 @@ const emit = defineEmits<{
 
 const isConnected = computed(() => Boolean(props.state?.connectionId?.value))
 const isConnecting = computed(() => props.state?.isConnecting?.value ?? false)
+const isDisconnecting = computed(() => props.state?.isDisconnecting?.value ?? false)
 const isRefreshing = computed(() => props.state?.isRefreshing?.value ?? false)
 const tables = computed(() => props.state?.tables?.value ?? [])
 const activeTableName = computed(() => props.state?.activeTableName?.value ?? null)
@@ -37,6 +39,9 @@ const kindLabel = computed(() => getConnectionKindLabel(kind.value))
 const tagType = computed(() => getConnectionKindTagType(kind.value))
 const statusDotClass = computed(() => {
 	if (isConnecting.value) {
+		return "bg-amber-400 animate-pulse"
+	}
+	if (isDisconnecting.value) {
 		return "bg-amber-400 animate-pulse"
 	}
 	if (isConnected.value) {
@@ -48,6 +53,9 @@ const statusText = computed(() => {
 	if (isConnecting.value) {
 		return "连接中"
 	}
+	if (isDisconnecting.value) {
+		return "断开中"
+	}
 	if (isConnected.value) {
 		return "已连接"
 	}
@@ -57,12 +65,17 @@ const statusTextClass = computed(() => {
 	if (isConnecting.value) {
 		return "text-amber-600"
 	}
+	if (isDisconnecting.value) {
+		return "text-amber-600"
+	}
 	if (isConnected.value) {
 		return "text-emerald-600"
 	}
 	return "text-slate-500"
 })
-const showCollapsedStatus = computed(() => isConnecting.value || !isConnected.value)
+const showCollapsedStatus = computed(
+	() => isConnecting.value || isDisconnecting.value || !isConnected.value
+)
 const lastConnectedLabel = computed(() => formatTimestamp(props.profile.lastConnectedAt))
 const connectLabel = computed(() => (isConnected.value ? "重连" : "连接"))
 const collapsedTitle = computed(() => {
@@ -167,7 +180,7 @@ function toggleExpanded() {
 						size="tiny"
 						type="primary"
 						:loading="isConnecting"
-						:disabled="isConnecting"
+						:disabled="isConnecting || isDisconnecting"
 						@click.stop="emit('connect')"
 					>
 						<Plug class="h-3 w-3" />
@@ -175,8 +188,18 @@ function toggleExpanded() {
 					</NButton>
 					<NButton
 						size="tiny"
+						type="warning"
+						:loading="isDisconnecting"
+						:disabled="!isConnected || isDisconnecting"
+						@click.stop="emit('disconnect')"
+					>
+						<Plug class="h-3 w-3" />
+						<span class="ml-1">断开</span>
+					</NButton>
+					<NButton
+						size="tiny"
 						quaternary
-						:disabled="!isConnected || isRefreshing"
+						:disabled="!isConnected || isRefreshing || isDisconnecting"
 						@click.stop="emit('refresh')"
 					>
 						<RefreshCcw class="h-3 w-3" />

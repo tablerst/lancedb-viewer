@@ -1,7 +1,7 @@
 import type { ComputedRef, Ref } from "vue"
 import { inject, provide } from "vue"
 
-import type { SchemaDefinition, TableInfo } from "../ipc/v1"
+import type { AuthDescriptor, SchemaDefinition, TableInfo } from "../ipc/v1"
 import type { StoredProfile } from "../models/profile"
 import type { ConnectionState } from "./useConnection"
 
@@ -9,6 +9,7 @@ export interface ProfileFormState {
 	name: string
 	uri: string
 	storageOptionsJson: string
+	auth?: AuthDescriptor
 }
 
 export interface WorkspaceContext {
@@ -23,6 +24,7 @@ export interface WorkspaceContext {
 		name: string
 		uri: string
 		storageOptionsJson: string
+		auth?: AuthDescriptor
 	}) => Promise<void>
 	deleteProfile: (profileId: string) => Promise<void>
 	setProfileLastConnected: (profileId: string, connectedAt: string) => Promise<void>
@@ -38,7 +40,9 @@ export interface WorkspaceContext {
 	isConnecting: ComputedRef<boolean>
 	isRefreshing: ComputedRef<boolean>
 	isOpening: ComputedRef<boolean>
+	isDisconnecting: ComputedRef<boolean>
 	connectProfile: (profileId: string) => Promise<void>
+	disconnectProfile: (profileId: string) => Promise<void>
 	refreshTables: (profileId: string) => Promise<void>
 	openTable: (profileId: string, name: string) => Promise<void>
 	refreshSchema: (profileId: string) => Promise<void>

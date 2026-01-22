@@ -27,11 +27,11 @@ const modules = computed<FeatureModule[]>(() => [
 		title: "连接与库",
 		description: "覆盖 Connection 与库级管理能力",
 		items: [
-			{ name: "连接/断开", status: "done", note: "connect 已实现" },
+			{ name: "连接/断开", status: "done", note: "connect / disconnect 已实现" },
 			{ name: "列出表", status: "done" },
 			{ name: "创建表", status: "done" },
 			{ name: "删除表", status: "done", note: "已接入 drop_table_v1" },
-			{ name: "重命名表", status: "plan" },
+			{ name: "重命名表", status: "done", note: "Cloud 支持；本地将提示不支持" },
 		],
 	},
 	{
@@ -61,7 +61,7 @@ const modules = computed<FeatureModule[]>(() => [
 			{ name: "过滤查询", status: "done" },
 			{ name: "向量检索", status: "done" },
 			{ name: "全文检索", status: "done" },
-			{ name: "组合查询", status: "todo" },
+			{ name: "组合查询", status: "done", note: "新增 combined_search_v1" },
 		],
 	},
 	{
@@ -78,26 +78,26 @@ const modules = computed<FeatureModule[]>(() => [
 		title: "版本与时间旅行",
 		description: "版本列表、回溯与克隆",
 		items: [
-			{ name: "版本列表", status: "todo" },
-			{ name: "打开指定版本", status: "todo" },
-			{ name: "克隆/分支", status: "todo" },
+			{ name: "版本列表", status: "done" },
+			{ name: "打开指定版本", status: "done" },
+			{ name: "克隆/分支", status: "done" },
 		],
 	},
 	{
 		title: "导入导出与维护",
 		description: "数据导入导出与维护操作",
 		items: [
-			{ name: "导入 (CSV/Parquet/JSONL)", status: "todo" },
-			{ name: "导出", status: "todo" },
-			{ name: "Compact/Vacuum", status: "todo" },
+			{ name: "导入 (CSV/Parquet/JSONL)", status: "done" },
+			{ name: "导出", status: "done" },
+			{ name: "Compact/Vacuum", status: "done" },
 		],
 	},
 	{
 		title: "安全与凭证",
 		description: "凭证/授权与安全存储",
 		items: [
-			{ name: "Auth Descriptor 接入", status: "plan" },
-			{ name: "Stronghold 存储", status: "plan" },
+			{ name: "Auth Descriptor 接入", status: "done" },
+			{ name: "Stronghold 存储", status: "done", note: "已使用 Stronghold 保存凭证引用" },
 		],
 	},
 ])

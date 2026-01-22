@@ -23,6 +23,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
 tauri-plugin-log = "2.0.0"
 tauri-plugin-dialog = "2"
+tauri-plugin-stronghold = "2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 lancedb = "0.23.1"
@@ -31,10 +32,13 @@ backtrace = "0.3.76"
 arrow-array = "56.2.0"
 arrow-schema = "56.2.0"
 arrow-json = "56.2.0"
+arrow-csv = "56.2.0"
 arrow-ipc = "56.2.0"
+parquet = { version = "56.2.0", features = ["arrow"] }
 base64 = "0.22.1"
 futures-util = "0.3"
 uuid = { version = "1.10.0", features = ["v4"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3.12.0"

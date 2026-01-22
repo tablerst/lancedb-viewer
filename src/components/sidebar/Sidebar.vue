@@ -7,6 +7,7 @@ import {
 	ChevronRight,
 	Database,
 	Filter,
+	Key,
 	LayoutGrid,
 	ListChecks,
 	Plus,
@@ -19,6 +20,7 @@ import type { ConnectionState } from "../../composables/useConnection"
 import { useWorkspace } from "../../composables/workspaceContext"
 import type { ConnectionKind } from "../../lib/connectionKind"
 import { getConnectionKind, getConnectionKindLabel } from "../../lib/connectionKind"
+import type { AuthDescriptor } from "../../ipc/v1"
 import type { StoredProfile } from "../../models/profile"
 import ConnectionItem from "./ConnectionItem.vue"
 
@@ -28,6 +30,7 @@ const props = defineProps<{
 	connectionStates: Record<string, ConnectionState>
 	onSelectProfile: (profileId: string) => void | Promise<void>
 	onConnectProfile: (profileId: string) => void | Promise<void>
+	onDisconnectProfile: (profileId: string) => void | Promise<void>
 	onRefreshTables: (profileId: string) => void | Promise<void>
 	onOpenTable: (profileId: string, tableName: string) => void | Promise<void>
 }>()
@@ -51,6 +54,7 @@ type CreateProfilePayload = {
 	name: string
 	uri: string
 	storageOptionsJson?: string
+	auth?: AuthDescriptor
 }
 
 type UpdateProfilePayload = {
@@ -58,6 +62,7 @@ type UpdateProfilePayload = {
 	name: string
 	uri: string
 	storageOptionsJson?: string
+	auth?: AuthDescriptor
 }
 
 const createDialogLabel = "dialog-new-connection"
@@ -87,6 +92,7 @@ const virtualItemSize = computed(() => (isCollapsed.value ? collapsedItemSize : 
 const navItems = [
 	{ key: "explorer", label: "资源浏览", to: "/", icon: LayoutGrid },
 	{ key: "search", label: "检索", to: "/search", icon: Search },
+	{ key: "credentials", label: "凭证", to: "/credentials", icon: Key },
 	{ key: "capabilities", label: "能力地图", to: "/capabilities", icon: ListChecks },
 ] as const
 
@@ -113,6 +119,7 @@ onMounted(async () => {
 					storageOptionsJson: payload.storageOptionsJson?.trim()
 						? payload.storageOptionsJson
 						: "{}",
+					auth: payload.auth ?? { type: "none" },
 				}
 				await addProfile()
 			}
@@ -132,6 +139,7 @@ onMounted(async () => {
 					storageOptionsJson: payload.storageOptionsJson?.trim()
 						? payload.storageOptionsJson
 						: "{}",
+					auth: payload.auth,
 				})
 			}
 		)
@@ -229,6 +237,11 @@ async function handleDeleteProfile(profileId: string) {
 async function selectAndConnect(profileId: string) {
 	await props.onSelectProfile(profileId)
 	await props.onConnectProfile(profileId)
+}
+
+async function selectAndDisconnect(profileId: string) {
+	await props.onSelectProfile(profileId)
+	await props.onDisconnectProfile(profileId)
 }
 
 async function selectAndRefresh(profileId: string) {
@@ -358,6 +371,7 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 									:collapsed="isCollapsed"
 									@select="onSelectProfile(item.id)"
 									@connect="selectAndConnect(item.id)"
+									@disconnect="selectAndDisconnect(item.id)"
 									@refresh="selectAndRefresh(item.id)"
 									@open-table="(name) => selectAndOpenTable(item.id, name)"
 									@edit="openEditDialog(item.id)"
@@ -376,6 +390,7 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 							:collapsed="isCollapsed"
 							@select="onSelectProfile(profile.id)"
 							@connect="selectAndConnect(profile.id)"
+							@disconnect="selectAndDisconnect(profile.id)"
 							@refresh="selectAndRefresh(profile.id)"
 							@open-table="(name) => selectAndOpenTable(profile.id, name)"
 							@edit="openEditDialog(profile.id)"

@@ -17,6 +17,8 @@ export interface ResultEnvelope<T> {
 
 export type DataFormat = "json" | "arrow"
 
+export type DataFileFormatV1 = "csv" | "parquet" | "jsonl"
+
 export type WriteDataMode = "append" | "overwrite"
 
 export type IndexTypeV1 =
@@ -58,6 +60,15 @@ export interface ConnectResponseV1 {
 	uri: string
 }
 
+export interface DisconnectRequestV1 {
+	connectionId: string
+}
+
+export interface DisconnectResponseV1 {
+	connectionId: string
+	releasedTables: number
+}
+
 export interface TableInfo {
 	name: string
 }
@@ -74,6 +85,19 @@ export interface DropTableRequestV1 {
 
 export interface DropTableResponseV1 {
 	tableName: string
+}
+
+export interface RenameTableRequestV1 {
+	connectionId: string
+	tableName: string
+	newTableName: string
+	namespace?: string[]
+	newNamespace?: string[]
+}
+
+export interface RenameTableResponseV1 {
+	tableName: string
+	newTableName: string
 }
 
 export interface ListIndexesRequestV1 {
@@ -261,6 +285,54 @@ export interface DeleteRowsResponseV1 {
 	version: number
 }
 
+export interface ImportDataRequestV1 {
+	tableId: string
+	path: string
+	format: DataFileFormatV1
+	mode?: WriteDataMode
+	hasHeader?: boolean
+	delimiter?: string
+}
+
+export interface ImportDataResponseV1 {
+	tableId: string
+	rows: number
+}
+
+export interface ExportDataRequestV1 {
+	tableId: string
+	path: string
+	format: DataFileFormatV1
+	projection?: string[]
+	filter?: string
+	limit?: number
+	offset?: number
+	delimiter?: string
+	withHeader?: boolean
+}
+
+export interface ExportDataResponseV1 {
+	path: string
+	rows: number
+}
+
+export type OptimizeActionV1 = "compact" | "vacuum"
+
+export interface OptimizeTableRequestV1 {
+	tableId: string
+	action: OptimizeActionV1
+	targetRowsPerFragment?: number
+	olderThanDays?: number
+	deleteUnverified?: boolean
+	errorIfTaggedOldVersions?: boolean
+}
+
+export interface OptimizeTableResponseV1 {
+	tableId: string
+	action: OptimizeActionV1
+	summary: string
+}
+
 export type DataChunk =
 	| {
 			format: "json"
@@ -278,6 +350,76 @@ export type DataChunk =
 export interface ScanResponseV1 {
 	chunk: DataChunk
 	nextOffset?: number
+}
+
+export interface VersionInfoV1 {
+	version: number
+	timestamp: string
+	metadata: Record<string, string>
+}
+
+export interface ListVersionsRequestV1 {
+	tableId: string
+}
+
+export interface ListVersionsResponseV1 {
+	versions: VersionInfoV1[]
+}
+
+export interface GetTableVersionRequestV1 {
+	tableId: string
+}
+
+export interface GetTableVersionResponseV1 {
+	tableId: string
+	version: number
+}
+
+export interface CheckoutTableVersionRequestV1 {
+	tableId: string
+	version: number
+}
+
+export interface CheckoutTableVersionResponseV1 {
+	tableId: string
+	version: number
+}
+
+export interface CheckoutTableLatestRequestV1 {
+	tableId: string
+}
+
+export interface CheckoutTableLatestResponseV1 {
+	tableId: string
+	version: number
+}
+
+export interface CloneTableRequestV1 {
+	connectionId: string
+	tableId: string
+	targetTableName: string
+	sourceVersion?: number
+	sourceTag?: string
+	isShallow?: boolean
+}
+
+export interface CloneTableResponseV1 {
+	tableId: string
+	name: string
+}
+
+export interface CombinedSearchRequestV1 {
+	tableId: string
+	vector?: number[]
+	vectorColumn?: string
+	query?: string
+	columns?: string[]
+	projection?: string[]
+	filter?: string
+	limit?: number
+	offset?: number
+	nprobes?: number
+	refineFactor?: number
 }
 
 export interface VectorSearchRequestV1 {

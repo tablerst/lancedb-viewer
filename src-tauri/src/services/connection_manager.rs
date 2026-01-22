@@ -13,6 +13,7 @@ pub struct ConnectionManager {
 struct StoredTable {
     name: String,
     table: Table,
+    connection_id: String,
 }
 
 impl ConnectionManager {
@@ -30,9 +31,16 @@ impl ConnectionManager {
         self.connections.get(connection_id).cloned()
     }
 
-    pub fn insert_table(&mut self, name: String, table: Table) -> String {
+    pub fn insert_table(&mut self, name: String, table: Table, connection_id: String) -> String {
         let id = Uuid::new_v4().to_string();
-        self.tables.insert(id.clone(), StoredTable { name, table });
+        self.tables.insert(
+            id.clone(),
+            StoredTable {
+                name,
+                table,
+                connection_id,
+            },
+        );
         id
     }
 
@@ -42,5 +50,15 @@ impl ConnectionManager {
 
     pub fn get_table_name(&self, table_id: &str) -> Option<String> {
         self.tables.get(table_id).map(|entry| entry.name.clone())
+    }
+
+    pub fn remove_connection(&mut self, connection_id: &str) -> Option<usize> {
+        if self.connections.remove(connection_id).is_none() {
+            return None;
+        }
+        let before = self.tables.len();
+        self.tables
+            .retain(|_, entry| entry.connection_id != connection_id);
+        Some(before.saturating_sub(self.tables.len()))
     }
 }

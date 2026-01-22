@@ -39,7 +39,9 @@ const {
 	isConnecting,
 	isRefreshing,
 	isOpening,
+	isDisconnecting,
 	connectProfile,
+	disconnectProfile,
 	refreshTables,
 	openTable,
 	refreshSchema,
@@ -72,7 +74,9 @@ provideWorkspace({
 	isConnecting,
 	isRefreshing,
 	isOpening,
+	isDisconnecting,
 	connectProfile,
+	disconnectProfile,
 	refreshTables,
 	openTable,
 	refreshSchema,
@@ -98,10 +102,16 @@ const isDialogRoute = computed(() => route.meta.layout === "dialog")
 					<RouterView />
 				</div>
 				<div v-else class="flex h-full min-h-0">
-					<Sidebar :profiles="profiles" :active-profile-id="activeProfileId"
-						:connection-states="connectionStates" :on-select-profile="selectProfile"
-						:on-connect-profile="connectProfile" :on-refresh-tables="refreshTables"
-						:on-open-table="openTable" />
+					<Sidebar
+						:profiles="profiles"
+						:active-profile-id="activeProfileId"
+						:connection-states="connectionStates"
+						:on-select-profile="selectProfile"
+						:on-connect-profile="connectProfile"
+						:on-disconnect-profile="disconnectProfile"
+						:on-refresh-tables="refreshTables"
+						:on-open-table="openTable"
+					/>
 
 					<main class="min-w-0 flex-1 overflow-y-auto">
 						<div class="p-6">

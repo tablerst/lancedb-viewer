@@ -1,27 +1,41 @@
 <script setup lang="ts">
+import { Menu, MenuItem } from "@tauri-apps/api/menu"
+import { getCurrentWindow } from "@tauri-apps/api/window"
+import { confirm, open, save } from "@tauri-apps/plugin-dialog"
 import { NButton, NInput, NSpace, type DataTableColumns, type SelectOption } from "naive-ui"
 import { computed, h, ref, watch } from "vue"
 import { useWorkspace } from "../composables/workspaceContext"
 import type {
+	DataFileFormatV1,
 	FieldDataType,
 	IndexDefinitionV1,
 	IndexTypeV1,
 	SchemaField,
 	SchemaFieldInput,
 	TableInfo,
+	VersionInfoV1,
 	WriteDataMode,
 } from "../ipc/v1"
-import { formatCellValue, normalizeRow } from "../lib/formatters.ts"
+import { formatCellValue, formatTimestamp, normalizeRow } from "../lib/formatters.ts"
 import {
 	addColumnsV1,
 	alterColumnsV1,
+	checkoutTableLatestV1,
+	checkoutTableVersionV1,
+	cloneTableV1,
 	createIndexV1,
 	createTableV1,
 	deleteRowsV1,
 	dropIndexV1,
 	dropColumnsV1,
 	dropTableV1,
+	exportDataV1,
+	optimizeTableV1,
+	getTableVersionV1,
+	importDataV1,
 	listIndexesV1,
+	listVersionsV1,
+	renameTableV1,
 	scanV1,
 	updateRowsV1,
 	unwrapEnvelope,
@@ -94,6 +108,22 @@ const indexColumns: DataTableColumns<IndexDefinitionV1> = [
 	},
 ]
 
+const versionColumns: DataTableColumns<VersionInfoV1> = [
+	{ title: () => renderHeader("版本"), key: "version", ellipsis: { tooltip: true } },
+	{
+		title: () => renderHeader("时间"),
+		key: "timestamp",
+		ellipsis: { tooltip: true },
+		render: (row) => formatTimestamp(row.timestamp),
+	},
+	{
+		title: () => renderHeader("元数据"),
+		key: "metadata",
+		ellipsis: { tooltip: true },
+		render: (row) => formatMetadata(row.metadata),
+	},
+]
+
 const schemaData = computed(() => schema.value?.fields ?? [])
 const allFieldNames = computed(() => schema.value?.fields.map((field) => field.name) ?? [])
 const columnOptions = computed<SelectOption[]>(() =>
@@ -107,6 +137,7 @@ const selectedColumns = ref<string[]>([])
 const limit = ref(50)
 const offset = ref(0)
 const filterExpression = ref("")
+const activeInnerTab = ref("schema")
 
 const canManageTables = computed(() => Boolean(connectionId.value))
 
@@ -193,6 +224,19 @@ const isCreatingIndex = ref(false)
 const dropIndexName = ref("")
 const isDroppingIndex = ref(false)
 
+const versions = ref<VersionInfoV1[]>([])
+const isLoadingVersions = ref(false)
+const versionError = ref("")
+const currentVersion = ref<number | null>(null)
+const checkoutVersion = ref<number | null>(null)
+const isCheckingOutVersion = ref(false)
+const isCheckingOutLatest = ref(false)
+
+const cloneTargetName = ref("")
+const cloneSourceVersion = ref<number | null>(null)
+const cloneIsShallow = ref(true)
+const isCloningTable = ref(false)
+
 const writeMode = ref<WriteDataMode>("append")
 const writeRowsText = ref("[]")
 const isWritingRows = ref(false)
@@ -214,8 +258,43 @@ const writeModeOptions: SelectOption[] = [
 	{ label: "覆盖写入", value: "overwrite" },
 ]
 
+const fileFormatOptions: SelectOption[] = [
+	{ label: "CSV", value: "csv" },
+	{ label: "Parquet", value: "parquet" },
+	{ label: "JSONL", value: "jsonl" },
+]
+
+const importFormat = ref<DataFileFormatV1>("csv")
+const importPath = ref("")
+const importMode = ref<WriteDataMode>("append")
+const importHasHeader = ref(true)
+const importDelimiter = ref(",")
+const isImporting = ref(false)
+
+const exportFormat = ref<DataFileFormatV1>("csv")
+const exportPath = ref("")
+const exportProjection = ref<string[]>([])
+const exportFilter = ref("")
+const exportLimit = ref<number | null>(1000)
+const exportOffset = ref<number | null>(0)
+const exportWithHeader = ref(true)
+const exportDelimiter = ref(",")
+const isExporting = ref(false)
+
+const compactTargetRows = ref<number | null>(1_000_000)
+const vacuumOlderThanDays = ref<number | null>(7)
+const isCompacting = ref(false)
+const isVacuuming = ref(false)
+
+const isCsvImport = computed(() => importFormat.value === "csv")
+const isCsvExport = computed(() => exportFormat.value === "csv")
+
 const isScanning = ref(false)
 const isDropping = ref(false)
+const isRenamingTable = ref(false)
+const renameTargetName = ref("")
+const renameSourceTable = ref<string | null>(null)
+const showRenameModal = ref(false)
 const scanError = ref("")
 const dataRows = ref<unknown[]>([])
 const nextOffset = ref<number | null>(null)
@@ -304,6 +383,150 @@ function addOpenedTable(name: string) {
 
 function getTabLabel(tableName: string) {
 	return `${connectionLabel.value}-${tableName}`
+}
+
+function renderTableTabLabel(tableName: string) {
+	return h(
+		"span",
+		{
+			class: "table-tab-label",
+			title: getTabLabel(tableName),
+			onContextmenu: (event: MouseEvent) => {
+				void showTableContextMenu(tableName, event)
+			},
+		},
+		getTabLabel(tableName)
+	)
+}
+
+function formatMetadata(metadata: Record<string, string>) {
+	const entries = Object.entries(metadata ?? {})
+	if (!entries.length) {
+		return "—"
+	}
+	return entries.map(([key, value]) => `${key}=${value}`).join(", ")
+}
+
+const fileDialogFilters: Record<DataFileFormatV1, { name: string; extensions: string[] }> = {
+	csv: { name: "CSV", extensions: ["csv"] },
+	parquet: { name: "Parquet", extensions: ["parquet"] },
+	jsonl: { name: "JSONL", extensions: ["jsonl", "json"] },
+}
+
+function resolveDialogPath(value: string | string[] | null) {
+	if (!value) {
+		return ""
+	}
+	if (Array.isArray(value)) {
+		return value[0] ?? ""
+	}
+	return value
+}
+
+async function selectImportFile() {
+	const selection = await open({
+		multiple: false,
+		filters: [fileDialogFilters[importFormat.value]],
+	})
+	const path = resolveDialogPath(selection)
+	if (path) {
+		importPath.value = path
+	}
+}
+
+async function selectExportFile() {
+	const selection = await save({
+		filters: [fileDialogFilters[exportFormat.value]],
+	})
+	if (selection) {
+		exportPath.value = selection
+	}
+}
+
+async function ensureActiveTable(tableName: string) {
+	const profileId = activeProfileId.value
+	if (!profileId) {
+		return false
+	}
+	if (activeTableName.value !== tableName) {
+		await openTable(profileId, tableName)
+	}
+	activeTableTab.value = tableName
+	return true
+}
+
+async function openRenameModal(tableName: string) {
+	if (!(await ensureActiveTable(tableName))) {
+		return
+	}
+	renameSourceTable.value = tableName
+	renameTargetName.value = tableName
+	showRenameModal.value = true
+}
+
+async function requestDropTable(tableName: string) {
+	const shouldDrop = await confirm(`确定删除表 ${tableName} 吗？该操作不可撤销。`)
+	if (!shouldDrop) {
+		return
+	}
+	await dropTableByName(tableName)
+}
+
+async function showTableContextMenu(tableName: string, event: MouseEvent) {
+	event.preventDefault()
+	const profileId = activeProfileId.value
+	const currentConnectionId = connectionId.value
+	if (!profileId || !currentConnectionId) {
+		return
+	}
+	const menu = await Menu.new({
+		items: [
+			await MenuItem.new({
+				id: "open",
+				text: "打开",
+				action: async () => {
+					await ensureActiveTable(tableName)
+				},
+			}),
+			await MenuItem.new({
+				id: "data",
+				text: "数据浏览",
+				action: async () => {
+					if (await ensureActiveTable(tableName)) {
+						activeInnerTab.value = "data"
+					}
+				},
+			}),
+			await MenuItem.new({
+				id: "versions",
+				text: "版本与时间旅行",
+				action: async () => {
+					if (await ensureActiveTable(tableName)) {
+						activeInnerTab.value = "versions"
+					}
+				},
+			}),
+			await MenuItem.new({
+				id: "rename",
+				text: "重命名…",
+				action: async () => {
+					await openRenameModal(tableName)
+				},
+			}),
+			await MenuItem.new({
+				id: "drop",
+				text: "删除表",
+				action: async () => {
+					await requestDropTable(tableName)
+				},
+			}),
+		],
+	})
+
+	await menu.popup({
+		window: getCurrentWindow(),
+		position: { x: event.clientX, y: event.clientY },
+	})
 }
 
 function compareValues(a: unknown, b: unknown) {
@@ -415,9 +638,29 @@ watch(activeProfileId, () => {
 	createFields.value = [createFieldDraft()]
 	writeRowsText.value = "[]"
 	writeMode.value = "append"
+	importFormat.value = "csv"
+	importPath.value = ""
+	importMode.value = "append"
+	importHasHeader.value = true
+	importDelimiter.value = ","
+	isImporting.value = false
+	exportFormat.value = "csv"
+	exportPath.value = ""
+	exportProjection.value = []
+	exportFilter.value = ""
+	exportLimit.value = 1000
+	exportOffset.value = 0
+	exportWithHeader.value = true
+	exportDelimiter.value = ","
+	isExporting.value = false
+	compactTargetRows.value = 1_000_000
+	vacuumOlderThanDays.value = 7
+	isCompacting.value = false
+	isVacuuming.value = false
 	updateFilter.value = ""
 	updateColumns.value = [{ column: "", expr: "" }]
 	deleteFilter.value = ""
+	activeInnerTab.value = "schema"
 	indexes.value = []
 	indexError.value = ""
 	indexType.value = "auto"
@@ -428,6 +671,29 @@ watch(activeProfileId, () => {
 	isLoadingIndexes.value = false
 	isCreatingIndex.value = false
 	isDroppingIndex.value = false
+	versions.value = []
+	versionError.value = ""
+	currentVersion.value = null
+	checkoutVersion.value = null
+	cloneTargetName.value = ""
+	cloneSourceVersion.value = null
+	cloneIsShallow.value = true
+	isLoadingVersions.value = false
+	isCheckingOutVersion.value = false
+	isCheckingOutLatest.value = false
+	isCloningTable.value = false
+	isRenamingTable.value = false
+	renameTargetName.value = ""
+	renameSourceTable.value = null
+	showRenameModal.value = false
+	isLoadingVersions.value = false
+	isCheckingOutVersion.value = false
+	isCheckingOutLatest.value = false
+	isCloningTable.value = false
+	isRenamingTable.value = false
+	renameTargetName.value = ""
+	renameSourceTable.value = null
+	showRenameModal.value = false
 	clearColumnFilters()
 })
 
@@ -443,9 +709,29 @@ watch(activeTableId, () => {
 	dropColumnNames.value = []
 	writeRowsText.value = "[]"
 	writeMode.value = "append"
+	importFormat.value = "csv"
+	importPath.value = ""
+	importMode.value = "append"
+	importHasHeader.value = true
+	importDelimiter.value = ","
+	isImporting.value = false
+	exportFormat.value = "csv"
+	exportPath.value = ""
+	exportProjection.value = []
+	exportFilter.value = ""
+	exportLimit.value = 1000
+	exportOffset.value = 0
+	exportWithHeader.value = true
+	exportDelimiter.value = ","
+	isExporting.value = false
+	compactTargetRows.value = 1_000_000
+	vacuumOlderThanDays.value = 7
+	isCompacting.value = false
+	isVacuuming.value = false
 	updateFilter.value = ""
 	updateColumns.value = [{ column: "", expr: "" }]
 	deleteFilter.value = ""
+	activeInnerTab.value = "schema"
 	indexes.value = []
 	indexError.value = ""
 	indexType.value = "auto"
@@ -453,6 +739,17 @@ watch(activeTableId, () => {
 	indexName.value = ""
 	indexReplace.value = true
 	dropIndexName.value = ""
+	versions.value = []
+	versionError.value = ""
+	currentVersion.value = null
+	checkoutVersion.value = null
+	cloneTargetName.value = ""
+	cloneSourceVersion.value = null
+	cloneIsShallow.value = true
+	renameTargetName.value = ""
+	isRenamingTable.value = false
+	renameSourceTable.value = null
+	showRenameModal.value = false
 	if (activeTableId.value && activeTableName.value) {
 		addOpenedTable(activeTableName.value)
 		activeTableTab.value = activeTableName.value
@@ -460,6 +757,8 @@ watch(activeTableId, () => {
 	if (activeTableId.value) {
 		void runScan()
 		void loadIndexes()
+		void loadVersions()
+		void loadCurrentVersion()
 	}
 })
 
@@ -472,6 +771,13 @@ watch(activeTableTab, (nextTab) => {
 		return
 	}
 	void openTable(profileId, nextTab)
+})
+
+watch(showRenameModal, (visible) => {
+	if (!visible) {
+		renameSourceTable.value = null
+		renameTargetName.value = ""
+	}
 })
 
 function selectAllColumns() {
@@ -722,6 +1028,41 @@ async function loadIndexes() {
 	}
 }
 
+async function loadVersions() {
+	const tableId = activeTableId.value
+	if (!tableId || isLoadingVersions.value) {
+		return
+	}
+
+	try {
+		isLoadingVersions.value = true
+		versionError.value = ""
+		const response = unwrapEnvelope(await listVersionsV1({ tableId }))
+		versions.value = response.versions
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "获取版本列表失败"
+		versionError.value = message
+		setError(message)
+	} finally {
+		isLoadingVersions.value = false
+	}
+}
+
+async function loadCurrentVersion() {
+	const tableId = activeTableId.value
+	if (!tableId) {
+		return
+	}
+
+	try {
+		const response = unwrapEnvelope(await getTableVersionV1({ tableId }))
+		currentVersion.value = response.version
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "获取当前版本失败"
+		setError(message)
+	}
+}
+
 async function submitCreateIndex() {
 	const tableId = activeTableId.value
 	if (!tableId || isCreatingIndex.value) {
@@ -784,6 +1125,102 @@ async function submitDropIndex() {
 		setError(message)
 	} finally {
 		isDroppingIndex.value = false
+	}
+}
+
+async function submitCheckoutVersion() {
+	const profileId = activeProfileId.value
+	const tableId = activeTableId.value
+	const version = checkoutVersion.value
+	if (!profileId || !tableId || isCheckingOutVersion.value) {
+		return
+	}
+	if (version === null) {
+		setError("请输入版本号")
+		return
+	}
+	if (version < 0) {
+		setError("版本号不能为负数")
+		return
+	}
+
+	try {
+		isCheckingOutVersion.value = true
+		clearMessages()
+		const response = unwrapEnvelope(
+			await checkoutTableVersionV1({ tableId, version })
+		)
+		currentVersion.value = response.version
+		setStatus(`已切换到版本 ${response.version}`)
+		await refreshSchema(profileId)
+		await runScan()
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "切换版本失败"
+		setError(message)
+	} finally {
+		isCheckingOutVersion.value = false
+	}
+}
+
+async function submitCheckoutLatest() {
+	const profileId = activeProfileId.value
+	const tableId = activeTableId.value
+	if (!profileId || !tableId || isCheckingOutLatest.value) {
+		return
+	}
+
+	try {
+		isCheckingOutLatest.value = true
+		clearMessages()
+		const response = unwrapEnvelope(await checkoutTableLatestV1({ tableId }))
+		currentVersion.value = response.version
+		setStatus(`已回到最新版本 ${response.version}`)
+		await refreshSchema(profileId)
+		await runScan()
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "恢复最新版本失败"
+		setError(message)
+	} finally {
+		isCheckingOutLatest.value = false
+	}
+}
+
+async function submitCloneTable() {
+	const profileId = activeProfileId.value
+	const currentConnectionId = connectionId.value
+	const tableId = activeTableId.value
+	if (!profileId || !currentConnectionId || !tableId || isCloningTable.value) {
+		return
+	}
+
+	const targetName = cloneTargetName.value.trim()
+	if (!targetName) {
+		setError("请输入克隆表名")
+		return
+	}
+
+	try {
+		isCloningTable.value = true
+		clearMessages()
+		const response = unwrapEnvelope(
+			await cloneTableV1({
+				connectionId: currentConnectionId,
+				tableId,
+				targetTableName: targetName,
+				sourceVersion: cloneSourceVersion.value ?? undefined,
+				isShallow: cloneIsShallow.value,
+			})
+		)
+		setStatus(`已创建克隆表 ${response.name}`)
+		cloneTargetName.value = ""
+		cloneSourceVersion.value = null
+		cloneIsShallow.value = true
+		await refreshTables(profileId)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "克隆表失败"
+		setError(message)
+	} finally {
+		isCloningTable.value = false
 	}
 }
 
@@ -877,10 +1314,194 @@ async function submitDeleteRows() {
 	}
 }
 
-async function dropActiveTable() {
+async function submitImportData() {
+	const profileId = activeProfileId.value
+	const tableId = activeTableId.value
+	const path = importPath.value.trim()
+	if (!profileId || !tableId || isImporting.value) {
+		return
+	}
+	if (!path) {
+		setError("请选择要导入的文件")
+		return
+	}
+
+	const delimiter = importDelimiter.value.trim()
+
+	try {
+		isImporting.value = true
+		clearMessages()
+		const response = unwrapEnvelope(
+			await importDataV1({
+				tableId,
+				path,
+				format: importFormat.value,
+				mode: importMode.value,
+				hasHeader: importHasHeader.value,
+				delimiter: delimiter ? delimiter : undefined,
+			})
+		)
+		setStatus(`已导入 ${response.rows} 行数据`)
+		await refreshSchema(profileId)
+		offset.value = 0
+		await runScan()
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "导入失败"
+		setError(message)
+	} finally {
+		isImporting.value = false
+	}
+}
+
+async function submitExportData() {
+	const tableId = activeTableId.value
+	const path = exportPath.value.trim()
+	if (!tableId || isExporting.value) {
+		return
+	}
+	if (!path) {
+		setError("请选择导出文件路径")
+		return
+	}
+
+	const limit = exportLimit.value && exportLimit.value > 0 ? exportLimit.value : undefined
+	const offsetValue = exportOffset.value ?? undefined
+	const delimiter = exportDelimiter.value.trim()
+
+	try {
+		isExporting.value = true
+		clearMessages()
+		const response = unwrapEnvelope(
+			await exportDataV1({
+				tableId,
+				path,
+				format: exportFormat.value,
+				projection: exportProjection.value.length ? exportProjection.value : undefined,
+				filter: exportFilter.value.trim() || undefined,
+				limit,
+				offset: offsetValue,
+				delimiter: delimiter ? delimiter : undefined,
+				withHeader: exportWithHeader.value,
+			})
+		)
+		setStatus(`已导出 ${response.rows} 行数据到 ${response.path}`)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "导出失败"
+		setError(message)
+	} finally {
+		isExporting.value = false
+	}
+}
+
+async function submitCompactTable() {
+	const tableId = activeTableId.value
+	if (!tableId || isCompacting.value) {
+		return
+	}
+	const targetRows = compactTargetRows.value
+	if (targetRows !== null && targetRows <= 0) {
+		setError("目标片段行数必须大于 0")
+		return
+	}
+
+	try {
+		isCompacting.value = true
+		clearMessages()
+		const response = unwrapEnvelope(
+			await optimizeTableV1({
+				tableId,
+				action: "compact",
+				targetRowsPerFragment: targetRows ?? undefined,
+			})
+		)
+		setStatus(response.summary || "Compact 已完成")
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "Compact 失败"
+		setError(message)
+	} finally {
+		isCompacting.value = false
+	}
+}
+
+async function submitVacuumTable() {
+	const tableId = activeTableId.value
+	if (!tableId || isVacuuming.value) {
+		return
+	}
+	const olderThanDays = vacuumOlderThanDays.value
+	if (olderThanDays !== null && olderThanDays < 0) {
+		setError("保留天数不能为负数")
+		return
+	}
+
+	try {
+		isVacuuming.value = true
+		clearMessages()
+		const response = unwrapEnvelope(
+			await optimizeTableV1({
+				tableId,
+				action: "vacuum",
+				olderThanDays: olderThanDays ?? undefined,
+			})
+		)
+		setStatus(response.summary || "Vacuum 已完成")
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "Vacuum 失败"
+		setError(message)
+	} finally {
+		isVacuuming.value = false
+	}
+}
+
+async function submitRenameTable() {
 	const profileId = activeProfileId.value
 	const currentConnectionId = connectionId.value
-	const tableName = activeTableName.value
+	const tableName = renameSourceTable.value ?? activeTableName.value
+	if (!profileId || !currentConnectionId || !tableName || isRenamingTable.value) {
+		return
+	}
+
+	const newTableName = renameTargetName.value.trim()
+	if (!newTableName) {
+		setError("请输入新表名")
+		return
+	}
+	if (newTableName === tableName) {
+		setError("新表名不能与当前表名相同")
+		return
+	}
+
+	try {
+		isRenamingTable.value = true
+		clearMessages()
+		const response = unwrapEnvelope(
+			await renameTableV1({
+				connectionId: currentConnectionId,
+				tableName,
+				newTableName,
+			})
+		)
+		setStatus(`已重命名为 ${response.newTableName}`)
+		renameTargetName.value = ""
+		renameSourceTable.value = null
+		showRenameModal.value = false
+		openedTables.value = openedTables.value.map((table) =>
+			table.name === tableName ? { name: response.newTableName } : table
+		)
+		activeTableTab.value = response.newTableName
+		await refreshTables(profileId)
+		await openTable(profileId, response.newTableName)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "重命名表失败"
+		setError(message)
+	} finally {
+		isRenamingTable.value = false
+	}
+}
+
+async function dropTableByName(tableName: string) {
+	const profileId = activeProfileId.value
+	const currentConnectionId = connectionId.value
 	if (!profileId || !currentConnectionId || !tableName || isDropping.value) {
 		return
 	}
@@ -906,6 +1527,14 @@ async function dropActiveTable() {
 	} finally {
 		isDropping.value = false
 	}
+}
+
+async function dropActiveTable() {
+	const tableName = activeTableName.value
+	if (!tableName) {
+		return
+	}
+	await dropTableByName(tableName)
 }
 
 async function runScan() {
@@ -1033,10 +1662,10 @@ function handlePageSizeChange(nextSize: number) {
 				v-for="table in openedTables"
 				:key="table.name"
 				:name="table.name"
-				:tab="getTabLabel(table.name)"
+				:tab="renderTableTabLabel(table.name)"
 			>
 				<template v-if="activeTableTab === table.name">
-					<NTabs type="line">
+					<NTabs v-model:value="activeInnerTab" type="line">
 						<NTabPane name="schema" tab="Schema">
 							<NDataTable
 								class="data-table"
@@ -1415,6 +2044,358 @@ function handlePageSizeChange(nextSize: number) {
 								</NCard>
 							</div>
 						</NTabPane>
+						<NTabPane name="import-export" tab="导入导出">
+							<div class="space-y-4">
+								<NCard size="small" title="导入数据" class="shadow-sm">
+									<div class="grid gap-3 xl:grid-cols-6">
+										<div class="xl:col-span-3">
+											<label class="text-xs text-slate-500">文件路径</label>
+											<div class="flex items-center gap-2">
+												<NInput
+													v-model:value="importPath"
+													placeholder="选择要导入的文件"
+													:disabled="isImporting"
+												/>
+												<NButton
+													secondary
+													:disabled="isImporting"
+													@click="selectImportFile"
+												>
+													选择文件
+												</NButton>
+											</div>
+										</div>
+										<div class="xl:col-span-3 grid grid-cols-2 gap-3">
+											<div>
+												<label class="text-xs text-slate-500">格式</label>
+												<NSelect
+													v-model:value="importFormat"
+													:options="fileFormatOptions"
+													:disabled="isImporting"
+												/>
+											</div>
+											<div>
+												<label class="text-xs text-slate-500">写入模式</label>
+												<NSelect
+													v-model:value="importMode"
+													:options="writeModeOptions"
+													:disabled="isImporting"
+												/>
+											</div>
+										</div>
+									</div>
+									<div class="mt-3 grid gap-3 xl:grid-cols-6">
+										<div class="xl:col-span-3">
+											<label class="text-xs text-slate-500">CSV 选项</label>
+											<div class="flex items-center gap-3">
+												<NCheckbox
+													v-model:checked="importHasHeader"
+													:disabled="!isCsvImport || isImporting"
+												>
+													包含表头
+												</NCheckbox>
+												<NInput
+													v-model:value="importDelimiter"
+													placeholder="," 
+													:disabled="!isCsvImport || isImporting"
+													:maxlength="1"
+													class="w-24"
+												/>
+											</div>
+										</div>
+										<div class="xl:col-span-3 flex items-end justify-end">
+											<NButton
+												type="primary"
+												:loading="isImporting"
+												:disabled="!hasActiveTable"
+												@click="submitImportData"
+											>
+												开始导入
+											</NButton>
+										</div>
+									</div>
+									<div class="mt-2 text-xs text-slate-400">
+										导入将使用当前表 Schema，CSV/JSONL 列顺序需与表一致。
+									</div>
+								</NCard>
+
+								<NCard size="small" title="导出数据" class="shadow-sm">
+									<div class="grid gap-3 xl:grid-cols-6">
+										<div class="xl:col-span-3">
+											<label class="text-xs text-slate-500">导出路径</label>
+											<div class="flex items-center gap-2">
+												<NInput
+													v-model:value="exportPath"
+													placeholder="选择导出文件位置"
+													:disabled="isExporting"
+												/>
+												<NButton
+													secondary
+													:disabled="isExporting"
+													@click="selectExportFile"
+												>
+													选择路径
+												</NButton>
+											</div>
+										</div>
+										<div class="xl:col-span-3 grid grid-cols-2 gap-3">
+											<div>
+												<label class="text-xs text-slate-500">格式</label>
+												<NSelect
+													v-model:value="exportFormat"
+													:options="fileFormatOptions"
+													:disabled="isExporting"
+												/>
+											</div>
+											<div>
+												<label class="text-xs text-slate-500">Filter</label>
+												<NInput
+													v-model:value="exportFilter"
+													placeholder="id > 10"
+													:disabled="isExporting"
+												/>
+											</div>
+										</div>
+									</div>
+									<div class="mt-3 grid gap-3 xl:grid-cols-6">
+										<div class="xl:col-span-3">
+											<label class="text-xs text-slate-500">列投影</label>
+											<NSelect
+												v-model:value="exportProjection"
+												:options="columnOptions"
+												multiple
+												clearable
+												:disabled="isExporting"
+											/>
+										</div>
+										<div class="xl:col-span-3 grid grid-cols-3 gap-3">
+											<div>
+												<label class="text-xs text-slate-500">Limit</label>
+												<NInputNumber
+													v-model:value="exportLimit"
+													:min="1"
+													:disabled="isExporting"
+												/>
+											</div>
+											<div>
+												<label class="text-xs text-slate-500">Offset</label>
+												<NInputNumber
+													v-model:value="exportOffset"
+													:min="0"
+													:disabled="isExporting"
+												/>
+											</div>
+											<div class="flex items-end justify-end">
+												<NButton
+													type="primary"
+													:loading="isExporting"
+													:disabled="!hasActiveTable"
+													@click="submitExportData"
+												>
+													开始导出
+												</NButton>
+											</div>
+										</div>
+									</div>
+									<div class="mt-3 flex flex-wrap items-center gap-3">
+										<NCheckbox
+											v-model:checked="exportWithHeader"
+											:disabled="!isCsvExport || isExporting"
+										>
+											CSV 输出表头
+										</NCheckbox>
+										<NInput
+											v-model:value="exportDelimiter"
+											placeholder="," 
+											:disabled="!isCsvExport || isExporting"
+											:maxlength="1"
+											class="w-24"
+										/>
+									</div>
+									<div class="mt-2 text-xs text-slate-400">
+										Limit 清空表示不限制输出。
+									</div>
+								</NCard>
+							</div>
+						</NTabPane>
+						<NTabPane name="maintenance" tab="维护">
+							<div class="space-y-4">
+								<NCard size="small" title="Compact（合并数据文件）" class="shadow-sm">
+									<div class="grid gap-3 xl:grid-cols-6">
+										<div class="xl:col-span-3">
+											<label class="text-xs text-slate-500">目标片段行数</label>
+											<NInputNumber
+												v-model:value="compactTargetRows"
+												:min="1"
+												:disabled="!hasActiveTable || isCompacting"
+											/>
+										</div>
+										<div class="xl:col-span-3 flex items-end justify-end">
+											<NButton
+												type="primary"
+												:loading="isCompacting"
+												:disabled="!hasActiveTable"
+												@click="submitCompactTable"
+											>
+												执行 Compact
+											</NButton>
+										</div>
+									</div>
+									<div class="mt-2 text-xs text-slate-400">
+										Compact 会合并小文件并重写片段，过程可能耗时。
+									</div>
+								</NCard>
+
+								<NCard size="small" title="Vacuum（清理旧版本）" class="shadow-sm">
+									<div class="grid gap-3 xl:grid-cols-6">
+										<div class="xl:col-span-3">
+											<label class="text-xs text-slate-500">保留天数</label>
+											<NInputNumber
+												v-model:value="vacuumOlderThanDays"
+												:min="0"
+												:disabled="!hasActiveTable || isVacuuming"
+											/>
+										</div>
+										<div class="xl:col-span-3 flex items-end justify-end">
+											<NPopconfirm
+												positive-text="执行"
+												negative-text="取消"
+												@positive-click="submitVacuumTable"
+											>
+												<template #trigger>
+													<NButton
+														type="primary"
+														:loading="isVacuuming"
+														:disabled="!hasActiveTable"
+													>
+														执行 Vacuum
+													</NButton>
+												</template>
+												将清理超过指定天数的旧版本与未引用文件，确定继续吗？
+											</NPopconfirm>
+										</div>
+									</div>
+									<div class="mt-2 text-xs text-slate-400">
+										建议在低峰期执行；部分远程后端可能不支持该操作。
+									</div>
+								</NCard>
+							</div>
+						</NTabPane>
+						<NTabPane name="versions" tab="版本与时间旅行">
+							<div class="space-y-4">
+								<NCard size="small" title="版本列表" class="shadow-sm">
+									<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+										<span>当前版本：{{ currentVersion ?? "—" }}</span>
+										<div class="flex items-center gap-2">
+											<NButton
+												secondary
+												:loading="isLoadingVersions"
+												:disabled="!hasActiveTable"
+												@click="loadVersions"
+											>
+												刷新版本
+											</NButton>
+											<NButton
+												quaternary
+												:disabled="!hasActiveTable"
+												@click="loadCurrentVersion"
+											>
+												刷新当前版本
+											</NButton>
+										</div>
+									</div>
+									<NAlert v-if="versionError" type="error" :bordered="false" class="mt-3">
+										{{ versionError }}
+									</NAlert>
+									<NDataTable
+										class="data-table mt-3"
+										size="small"
+										:columns="versionColumns"
+										:data="versions"
+										:bordered="false"
+										:row-key="(row) => row.version"
+									/>
+									<NEmpty v-if="!versions.length" description="暂无版本记录" class="mt-3" />
+								</NCard>
+
+								<NCard size="small" title="打开版本" class="shadow-sm">
+									<div class="grid gap-3 xl:grid-cols-6">
+										<div class="xl:col-span-2">
+											<label class="text-xs text-slate-500">版本号</label>
+											<NInputNumber
+												v-model:value="checkoutVersion"
+												:min="0"
+												:disabled="!hasActiveTable"
+											/>
+										</div>
+										<div class="xl:col-span-4 flex items-end justify-end gap-2">
+											<NButton
+												type="primary"
+												:loading="isCheckingOutVersion"
+												:disabled="!hasActiveTable"
+												@click="submitCheckoutVersion"
+											>
+												打开版本
+											</NButton>
+											<NButton
+												secondary
+												:loading="isCheckingOutLatest"
+												:disabled="!hasActiveTable"
+												@click="submitCheckoutLatest"
+											>
+												回到最新
+											</NButton>
+										</div>
+									</div>
+									<div class="mt-2 text-xs text-slate-400">
+										切换版本后会刷新 Schema 与数据浏览。
+									</div>
+								</NCard>
+
+								<NCard size="small" title="克隆/分支" class="shadow-sm">
+									<div class="grid gap-3 xl:grid-cols-6">
+										<div class="xl:col-span-3">
+											<label class="text-xs text-slate-500">新表名</label>
+											<NInput
+												v-model:value="cloneTargetName"
+												placeholder="clone_table"
+												:disabled="!hasActiveTable"
+											/>
+										</div>
+										<div class="xl:col-span-2">
+											<label class="text-xs text-slate-500">源版本（可选）</label>
+											<NInputNumber
+												v-model:value="cloneSourceVersion"
+												:min="0"
+												placeholder="留空使用最新"
+												:disabled="!hasActiveTable"
+											/>
+										</div>
+										<div class="xl:col-span-1 flex items-end">
+											<NCheckbox
+												v-model:checked="cloneIsShallow"
+												:disabled="!hasActiveTable"
+											>
+												浅克隆
+											</NCheckbox>
+										</div>
+										<div class="xl:col-span-6 flex items-center justify-end">
+											<NButton
+												type="primary"
+												:loading="isCloningTable"
+												:disabled="!hasActiveTable"
+												@click="submitCloneTable"
+											>
+												创建克隆
+											</NButton>
+										</div>
+									</div>
+									<div class="mt-2 text-xs text-slate-400">
+										浅克隆共享数据文件，适合做分支试验；深克隆暂未实现。
+									</div>
+								</NCard>
+							</div>
+						</NTabPane>
 							<NTabPane name="indexes" tab="索引管理">
 								<div class="space-y-4">
 									<NCard size="small" title="索引列表" class="shadow-sm">
@@ -1527,6 +2508,46 @@ function handlePageSizeChange(nextSize: number) {
 				</template>
 			</NTabPane>
 		</NTabs>
+
+		<NModal v-model:show="showRenameModal">
+			<NCard
+				size="small"
+				title="重命名表"
+				class="w-[420px]"
+				:closable="!isRenamingTable"
+				:bordered="false"
+			>
+				<div class="space-y-3">
+					<div class="text-xs text-slate-500">
+						当前表：{{ renameSourceTable ?? activeTableName ?? "—" }}
+					</div>
+					<NInput
+						v-model:value="renameTargetName"
+						placeholder="new_table_name"
+						:disabled="isRenamingTable"
+					/>
+					<div class="flex items-center justify-end gap-2">
+						<NButton
+							quaternary
+							:disabled="isRenamingTable"
+							@click="showRenameModal = false"
+						>
+							取消
+						</NButton>
+						<NButton
+							type="primary"
+							:loading="isRenamingTable"
+							@click="submitRenameTable"
+						>
+							确认重命名
+						</NButton>
+					</div>
+					<div class="text-[11px] text-slate-400">
+						仅 LanceDB Cloud 支持重命名；本地连接将提示不支持。
+					</div>
+				</div>
+			</NCard>
+		</NModal>
 	</div>
 </template>
 
@@ -1557,5 +2578,9 @@ function handlePageSizeChange(nextSize: number) {
 .table-filter-menu {
 	min-width: 220px;
 	padding: 12px;
+}
+
+.table-tab-label {
+	cursor: context-menu;
 }
 </style>

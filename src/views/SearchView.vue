@@ -5,7 +5,13 @@ import { computed, h, ref, watch } from "vue"
 import { useWorkspace } from "../composables/workspaceContext"
 import type { SchemaDefinition } from "../ipc/v1"
 import { formatCellValue, normalizeRow } from "../lib/formatters"
-import { ftsSearchV1, queryFilterV1, unwrapEnvelope, vectorSearchV1 } from "../lib/tauriClient"
+import {
+	combinedSearchV1,
+	ftsSearchV1,
+	queryFilterV1,
+	unwrapEnvelope,
+	vectorSearchV1,
+} from "../lib/tauriClient"
 
 const {
 	activeTableName,
@@ -46,6 +52,17 @@ const ftsLimit = ref(50)
 const ftsOffset = ref(0)
 const ftsProjection = ref<string[]>([])
 const ftsFilter = ref("")
+
+const combinedQuery = ref("")
+const combinedVectorText = ref("")
+const combinedVectorColumn = ref<string | null>(null)
+const combinedColumns = ref<string[]>([])
+const combinedLimit = ref(50)
+const combinedOffset = ref(0)
+const combinedProjection = ref<string[]>([])
+const combinedFilter = ref("")
+const combinedNprobes = ref<number | null>(null)
+const combinedRefine = ref<number | null>(null)
 
 const isSearching = ref(false)
 const resultRows = ref<unknown[]>([])
@@ -108,14 +125,22 @@ watch(activeTab, () => {
 	resetResults()
 })
 
-function parseVectorInput() {
-	const cleaned = vectorText.value.replace(/[\[\]]/g, " ")
+function parseVectorInputValue(value: string) {
+	const cleaned = value.replace(/[[\]]/g, " ")
 	const parts = cleaned.split(/[,\s]+/).filter(Boolean)
 	const numbers = parts.map((part) => Number(part))
 	if (!numbers.length || numbers.some((value) => Number.isNaN(value))) {
 		return null
 	}
 	return numbers
+}
+
+function parseVectorInput() {
+	return parseVectorInputValue(vectorText.value)
+}
+
+function parseCombinedVectorInput() {
+	return parseVectorInputValue(combinedVectorText.value)
 }
 
 async function runFilterQuery() {
@@ -233,6 +258,60 @@ async function runFtsQuery() {
 		isSearching.value = false
 	}
 }
+
+async function runCombinedQuery() {
+	const tableId = activeTableId.value
+	if (!tableId || isSearching.value) {
+		return
+	}
+
+	const queryText = combinedQuery.value.trim()
+	const vectorInput = combinedVectorText.value.trim()
+	const vector = vectorInput ? parseCombinedVectorInput() : null
+	if (!queryText && !vectorInput) {
+		resultError.value = "请输入向量或查询文本"
+		return
+	}
+	if (vectorInput && !vector) {
+		resultError.value = "请输入有效向量（例如：0.1, 0.2, 0.3）"
+		return
+	}
+
+	try {
+		isSearching.value = true
+		resultError.value = ""
+		clearMessages()
+		const response = unwrapEnvelope(
+			await combinedSearchV1({
+				tableId,
+				vector: vector ?? undefined,
+				vectorColumn: combinedVectorColumn.value ?? undefined,
+				query: queryText || undefined,
+				columns: combinedColumns.value.length ? combinedColumns.value : undefined,
+				projection: combinedProjection.value.length ? combinedProjection.value : undefined,
+				filter: combinedFilter.value.trim() || undefined,
+				limit: combinedLimit.value,
+				offset: combinedOffset.value,
+				nprobes: combinedNprobes.value ?? undefined,
+				refineFactor: combinedRefine.value ?? undefined,
+			})
+		)
+		if (response.chunk.format !== "json") {
+			resultError.value = "当前仅支持 JSON 数据块"
+			return
+		}
+		resultRows.value = response.chunk.rows
+		resultSchema.value = response.chunk.schema
+		resultNextOffset.value = response.nextOffset ?? null
+		setStatus(`已返回 ${response.chunk.rows.length} 行`)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "组合查询失败"
+		resultError.value = message
+		setError(message)
+	} finally {
+		isSearching.value = false
+	}
+}
 </script>
 
 <template>
@@ -276,6 +355,74 @@ async function runFtsQuery() {
 					<div class="mt-3">
 						<NButton type="primary" :loading="isSearching" @click="runFilterQuery">
 							查询
+						</NButton>
+					</div>
+				</NTabPane>
+
+				<NTabPane name="combined" tab="组合查询">
+					<div class="grid gap-3 xl:grid-cols-6">
+						<div class="xl:col-span-3">
+							<label class="text-xs text-slate-500">全文查询（可选）</label>
+							<NInput v-model:value="combinedQuery" placeholder="item 1" />
+						</div>
+						<div class="xl:col-span-3">
+							<label class="text-xs text-slate-500">向量输入（可选）</label>
+							<NInput v-model:value="combinedVectorText" placeholder="0.1, 0.2, 0.3" />
+						</div>
+					</div>
+					<div class="mt-3 grid gap-3 xl:grid-cols-6">
+						<div class="xl:col-span-2">
+							<label class="text-xs text-slate-500">向量列</label>
+							<NSelect
+								v-model:value="combinedVectorColumn"
+								:options="columnOptions"
+								clearable
+							/>
+						</div>
+						<div class="xl:col-span-2">
+							<label class="text-xs text-slate-500">全文列</label>
+							<NSelect
+								v-model:value="combinedColumns"
+								:options="columnOptions"
+								multiple
+								clearable
+							/>
+						</div>
+						<div class="xl:col-span-2">
+							<label class="text-xs text-slate-500">Filter</label>
+							<NInput v-model:value="combinedFilter" placeholder="id > 10" />
+						</div>
+					</div>
+					<div class="mt-3 grid gap-3 xl:grid-cols-6">
+						<div class="xl:col-span-2">
+							<label class="text-xs text-slate-500">Limit</label>
+							<NInputNumber v-model:value="combinedLimit" :min="1" />
+						</div>
+						<div class="xl:col-span-2">
+							<label class="text-xs text-slate-500">Offset</label>
+							<NInputNumber v-model:value="combinedOffset" :min="0" />
+						</div>
+						<div class="xl:col-span-1">
+							<label class="text-xs text-slate-500">nprobes</label>
+							<NInputNumber v-model:value="combinedNprobes" :min="1" />
+						</div>
+						<div class="xl:col-span-1">
+							<label class="text-xs text-slate-500">refine</label>
+							<NInputNumber v-model:value="combinedRefine" :min="1" />
+						</div>
+					</div>
+					<div class="mt-3">
+						<label class="text-xs text-slate-500">列投影</label>
+						<NSelect
+							v-model:value="combinedProjection"
+							:options="columnOptions"
+							multiple
+							clearable
+						/>
+					</div>
+					<div class="mt-3">
+						<NButton type="primary" :loading="isSearching" @click="runCombinedQuery">
+							组合查询
 						</NButton>
 					</div>
 				</NTabPane>

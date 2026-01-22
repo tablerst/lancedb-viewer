@@ -1,7 +1,10 @@
 import { computed, onMounted, ref } from "vue"
 
+import { cleanupUnusedCredentials } from "../lib/credentialVault"
 import { getConnectionKind } from "../lib/connectionKind"
+import { collectCredentialReferences } from "../lib/credentialReferences"
 import { normalizeConnectUri } from "../lib/lancedbUri"
+import type { AuthDescriptor } from "../ipc/v1"
 import type { StoredProfile } from "../models/profile"
 import { createProfile, loadProfileState, saveProfileState } from "../stores/profiles"
 
@@ -9,6 +12,7 @@ interface ProfileFormState {
 	name: string
 	uri: string
 	storageOptionsJson: string
+	auth?: AuthDescriptor
 }
 
 interface UseProfilesOptions {
@@ -34,6 +38,7 @@ export function useProfiles(options: UseProfilesOptions = {}) {
 		name: "",
 		uri: "",
 		storageOptionsJson: "{}",
+		auth: { type: "none" },
 	})
 	const isSavingProfile = ref(false)
 
@@ -52,6 +57,19 @@ export function useProfiles(options: UseProfilesOptions = {}) {
 			profiles: profiles.value,
 			activeProfileId: activeProfileId.value,
 		})
+	}
+
+	async function cleanupCredentials(nextProfiles: StoredProfile[]) {
+		try {
+			const used = collectCredentialReferences(nextProfiles)
+			const removed = await cleanupUnusedCredentials(used)
+			if (removed.length > 0) {
+				options.onStatus?.(`已回收 ${removed.length} 个未引用凭证`)
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "清理凭证失败"
+			options.onError?.(message)
+		}
 	}
 
 	async function addProfile() {
@@ -81,12 +99,17 @@ export function useProfiles(options: UseProfilesOptions = {}) {
 				name,
 				uri: normalizedUri,
 				storageOptions,
-				auth: { type: "none" },
+				auth: profileForm.value.auth ?? { type: "none" },
 			})
 			profiles.value = [...profiles.value, profile]
 			activeProfileId.value = profile.id
 			await persistProfiles()
-			profileForm.value = { name: "", uri: "", storageOptionsJson: "{}" }
+			profileForm.value = {
+				name: "",
+				uri: "",
+				storageOptionsJson: "{}",
+				auth: { type: "none" },
+			}
 			options.onStatus?.("连接档案已保存")
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "解析 storageOptions 失败"
@@ -101,6 +124,7 @@ export function useProfiles(options: UseProfilesOptions = {}) {
 		name: string
 		uri: string
 		storageOptionsJson: string
+		auth?: AuthDescriptor
 	}) {
 		if (isSavingProfile.value) {
 			return
@@ -135,12 +159,14 @@ export function useProfiles(options: UseProfilesOptions = {}) {
 				name,
 				uri: normalizedUri,
 				storageOptions,
+				auth: input.auth ?? existing.auth ?? { type: "none" },
 			}
 			profiles.value = profiles.value.map((profile) =>
 				profile.id === input.id ? updated : profile
 			)
 			await persistProfiles()
 			options.onStatus?.("连接档案已更新")
+			await cleanupCredentials(profiles.value)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "更新连接档案失败"
 			options.onError?.(message)
@@ -169,6 +195,7 @@ export function useProfiles(options: UseProfilesOptions = {}) {
 			}
 			await persistProfiles()
 			options.onStatus?.("连接档案已删除")
+			await cleanupCredentials(profiles.value)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "删除连接档案失败"
 			options.onError?.(message)

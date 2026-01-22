@@ -1,11 +1,17 @@
 use crate::ipc::v1::{
     AddColumnsRequestV1, AddColumnsResponseV1, AlterColumnsRequestV1, AlterColumnsResponseV1,
-    ConnectRequestV1, ConnectResponseV1, CreateIndexRequestV1, CreateIndexResponseV1,
-    CreateTableRequestV1, CreateTableResponseV1, DeleteRowsRequestV1, DeleteRowsResponseV1,
-    DropColumnsRequestV1, DropColumnsResponseV1, DropIndexRequestV1, DropIndexResponseV1,
-    DropTableRequestV1, DropTableResponseV1, FtsSearchRequestV1, GetSchemaRequestV1,
-    ListIndexesRequestV1, ListIndexesResponseV1, ListTablesRequestV1, ListTablesResponseV1,
-    OpenTableRequestV1, QueryFilterRequestV1, QueryResponseV1, ResultEnvelope, ScanRequestV1,
+    CheckoutTableLatestRequestV1, CheckoutTableLatestResponseV1, CheckoutTableVersionRequestV1,
+    CheckoutTableVersionResponseV1, CloneTableRequestV1, CloneTableResponseV1,
+    CombinedSearchRequestV1, ConnectRequestV1, ConnectResponseV1, CreateIndexRequestV1,
+    CreateIndexResponseV1, CreateTableRequestV1, CreateTableResponseV1, DeleteRowsRequestV1,
+    DeleteRowsResponseV1, DisconnectRequestV1, DisconnectResponseV1, DropColumnsRequestV1,
+    DropColumnsResponseV1, DropIndexRequestV1, DropIndexResponseV1, DropTableRequestV1,
+    DropTableResponseV1, ExportDataRequestV1, ExportDataResponseV1, FtsSearchRequestV1,
+    GetSchemaRequestV1, GetTableVersionRequestV1, GetTableVersionResponseV1,
+    ImportDataRequestV1, ImportDataResponseV1, ListIndexesRequestV1, ListIndexesResponseV1,
+    ListTablesRequestV1, ListTablesResponseV1, ListVersionsRequestV1, ListVersionsResponseV1,
+    OpenTableRequestV1, OptimizeTableRequestV1, OptimizeTableResponseV1, QueryFilterRequestV1,
+    QueryResponseV1, RenameTableRequestV1, RenameTableResponseV1, ResultEnvelope, ScanRequestV1,
     ScanResponseV1, SchemaDefinition, TableHandle, UpdateRowsRequestV1, UpdateRowsResponseV1,
     VectorSearchRequestV1, WriteRowsRequestV1, WriteRowsResponseV1,
 };
@@ -18,6 +24,14 @@ pub async fn connect_v1(
     request: ConnectRequestV1,
 ) -> Result<ResultEnvelope<ConnectResponseV1>, String> {
     Ok(services_v1::connect_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
+pub async fn disconnect_v1(
+    state: tauri::State<'_, AppState>,
+    request: DisconnectRequestV1,
+) -> Result<ResultEnvelope<DisconnectResponseV1>, String> {
+    Ok(services_v1::disconnect_v1(state.inner(), request).await)
 }
 
 #[tauri::command]
@@ -34,6 +48,14 @@ pub async fn drop_table_v1(
     request: DropTableRequestV1,
 ) -> Result<ResultEnvelope<DropTableResponseV1>, String> {
     Ok(services_v1::drop_table_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
+pub async fn rename_table_v1(
+    state: tauri::State<'_, AppState>,
+    request: RenameTableRequestV1,
+) -> Result<ResultEnvelope<RenameTableResponseV1>, String> {
+    Ok(services_v1::rename_table_v1(state.inner(), request).await)
 }
 
 #[tauri::command]
@@ -85,6 +107,46 @@ pub async fn get_schema_v1(
 }
 
 #[tauri::command]
+pub async fn list_versions_v1(
+    state: tauri::State<'_, AppState>,
+    request: ListVersionsRequestV1,
+) -> Result<ResultEnvelope<ListVersionsResponseV1>, String> {
+    Ok(services_v1::list_versions_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
+pub async fn get_table_version_v1(
+    state: tauri::State<'_, AppState>,
+    request: GetTableVersionRequestV1,
+) -> Result<ResultEnvelope<GetTableVersionResponseV1>, String> {
+    Ok(services_v1::get_table_version_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
+pub async fn checkout_table_version_v1(
+    state: tauri::State<'_, AppState>,
+    request: CheckoutTableVersionRequestV1,
+) -> Result<ResultEnvelope<CheckoutTableVersionResponseV1>, String> {
+    Ok(services_v1::checkout_table_version_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
+pub async fn checkout_table_latest_v1(
+    state: tauri::State<'_, AppState>,
+    request: CheckoutTableLatestRequestV1,
+) -> Result<ResultEnvelope<CheckoutTableLatestResponseV1>, String> {
+    Ok(services_v1::checkout_table_latest_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
+pub async fn clone_table_v1(
+    state: tauri::State<'_, AppState>,
+    request: CloneTableRequestV1,
+) -> Result<ResultEnvelope<CloneTableResponseV1>, String> {
+    Ok(services_v1::clone_table_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
 pub async fn add_columns_v1(
     state: tauri::State<'_, AppState>,
     request: AddColumnsRequestV1,
@@ -133,6 +195,30 @@ pub async fn delete_rows_v1(
 }
 
 #[tauri::command]
+pub async fn import_data_v1(
+    state: tauri::State<'_, AppState>,
+    request: ImportDataRequestV1,
+) -> Result<ResultEnvelope<ImportDataResponseV1>, String> {
+    Ok(services_v1::import_data_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
+pub async fn export_data_v1(
+    state: tauri::State<'_, AppState>,
+    request: ExportDataRequestV1,
+) -> Result<ResultEnvelope<ExportDataResponseV1>, String> {
+    Ok(services_v1::export_data_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
+pub async fn optimize_table_v1(
+    state: tauri::State<'_, AppState>,
+    request: OptimizeTableRequestV1,
+) -> Result<ResultEnvelope<OptimizeTableResponseV1>, String> {
+    Ok(services_v1::optimize_table_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
 pub async fn scan_v1(
     state: tauri::State<'_, AppState>,
     request: ScanRequestV1,
@@ -146,6 +232,14 @@ pub async fn query_filter_v1(
     request: QueryFilterRequestV1,
 ) -> Result<ResultEnvelope<QueryResponseV1>, String> {
     Ok(services_v1::query_filter_v1(state.inner(), request).await)
+}
+
+#[tauri::command]
+pub async fn combined_search_v1(
+    state: tauri::State<'_, AppState>,
+    request: CombinedSearchRequestV1,
+) -> Result<ResultEnvelope<QueryResponseV1>, String> {
+    Ok(services_v1::combined_search_v1(state.inner(), request).await)
 }
 
 #[tauri::command]

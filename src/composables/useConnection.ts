@@ -2,8 +2,10 @@ import type { Ref } from "vue"
 import { computed, ref, shallowRef, watch } from "vue"
 
 import type { SchemaDefinition, TableInfo } from "../ipc/v1"
+import { resolveAuthDescriptor } from "../lib/authDescriptor"
 import {
 	connectV1,
+	disconnectV1,
 	getSchemaV1,
 	listTablesV1,
 	openTableV1,
@@ -21,6 +23,7 @@ export interface ConnectionState {
 	isConnecting: Ref<boolean>
 	isRefreshing: Ref<boolean>
 	isOpening: Ref<boolean>
+	isDisconnecting: Ref<boolean>
 }
 
 interface UseConnectionOptions {
@@ -39,6 +42,7 @@ function createConnectionState(): ConnectionState {
 		isConnecting: ref(false),
 		isRefreshing: ref(false),
 		isOpening: ref(false),
+		isDisconnecting: ref(false),
 	}
 }
 
@@ -82,6 +86,9 @@ export function useConnection(
 	const isConnecting = computed(() => activeConnection.value?.isConnecting?.value ?? false)
 	const isRefreshing = computed(() => activeConnection.value?.isRefreshing?.value ?? false)
 	const isOpening = computed(() => activeConnection.value?.isOpening?.value ?? false)
+	const isDisconnecting = computed(
+		() => activeConnection.value?.isDisconnecting?.value ?? false
+	)
 
 	function resetConnection(profileId: string) {
 		const state = getState(profileId)
@@ -101,6 +108,7 @@ export function useConnection(
 		state.activeTableName.value = null
 		state.activeTableId.value = null
 		state.schema.value = null
+		state.isDisconnecting.value = false
 	}
 
 	function clearActiveTable(profileId: string) {
@@ -126,6 +134,7 @@ export function useConnection(
 			resetConnection(profileId)
 			const connectProfile = toConnectProfile(profile)
 			connectProfile.auth ??= { type: "none" }
+			connectProfile.auth = await resolveAuthDescriptor(connectProfile.auth)
 			const response = unwrapEnvelope(await connectV1(connectProfile))
 			state.connectionId.value = response.connectionId
 			try {
@@ -141,6 +150,37 @@ export function useConnection(
 			options.onError?.(message)
 		} finally {
 			state.isConnecting.value = false
+		}
+	}
+
+	async function disconnectProfile(profileId: string) {
+		const profile = profiles.value.find((item) => item.id === profileId) ?? null
+		const state = getState(profileId)
+		const id = state.connectionId.value
+		if (!id) {
+			return
+		}
+		if (state.isDisconnecting.value) {
+			return
+		}
+
+		let shouldReset = false
+		try {
+			state.isDisconnecting.value = true
+			unwrapEnvelope(await disconnectV1(id))
+			shouldReset = true
+			options.onStatus?.(`已断开：${profile?.name ?? ""}`.trim())
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "断开连接失败"
+			if (message.includes("not found")) {
+				shouldReset = true
+			}
+			options.onError?.(message)
+		} finally {
+			if (shouldReset) {
+				resetConnection(profileId)
+			}
+			state.isDisconnecting.value = false
 		}
 	}
 
@@ -217,7 +257,9 @@ export function useConnection(
 		isConnecting,
 		isRefreshing,
 		isOpening,
+		isDisconnecting,
 		connectProfile,
+		disconnectProfile,
 		refreshTables,
 		openTable,
 		refreshSchema,

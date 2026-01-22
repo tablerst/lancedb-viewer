@@ -5,6 +5,8 @@ import { open } from "@tauri-apps/plugin-dialog"
 import { FolderOpen } from "lucide-vue-next"
 import { computed, ref } from "vue"
 
+import type { AuthDescriptor } from "../ipc/v1"
+import { saveCredential } from "../lib/credentialVault"
 import type { ConnectionKind } from "../lib/connectionKind"
 import { getConnectionKind } from "../lib/connectionKind"
 import { normalizeConnectUri } from "../lib/lancedbUri"
@@ -16,6 +18,13 @@ const form = ref({
 	name: "",
 	uri: "",
 	storageOptionsJson: "{}",
+})
+const authForm = ref({
+	enabled: false,
+	provider: "",
+	paramsJson: "{}",
+	saveToStronghold: true,
+	reference: "",
 })
 const errorMessage = ref("")
 const isSubmitting = ref(false)
@@ -46,6 +55,17 @@ const uriPlaceholder = computed(() => {
 })
 
 const showLocalPicker = computed(() => createKind.value === "local")
+
+function parseAuthParams(raw: string): Record<string, string> {
+	if (!raw.trim()) {
+		return {}
+	}
+	const parsed = JSON.parse(raw) as Record<string, unknown>
+	if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+		throw new Error("auth params 必须是 JSON 对象")
+	}
+	return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value)]))
+}
 
 async function pickLocalFolder() {
 	errorMessage.value = ""
@@ -91,12 +111,33 @@ async function saveProfile() {
 
 	isSubmitting.value = true
 	try {
+		let auth: AuthDescriptor = { type: "none" }
+		if (authForm.value.enabled) {
+			const provider = authForm.value.provider.trim()
+			if (!provider) {
+				errorMessage.value = "请填写认证 Provider"
+				return
+			}
+			const params = parseAuthParams(authForm.value.paramsJson)
+			if (authForm.value.saveToStronghold) {
+				const reference = await saveCredential({
+					provider,
+					params,
+					label: name,
+				})
+				authForm.value.reference = reference
+				auth = { type: "secret_ref", provider, reference }
+			} else {
+				auth = { type: "inline", provider, params }
+			}
+		}
 		await emitTo(mainWindowLabel, createProfileEvent, {
 			name,
 			uri,
 			storageOptionsJson: form.value.storageOptionsJson?.trim()
 				? form.value.storageOptionsJson
 				: "{}",
+			auth,
 		})
 		await closeDialog()
 	} catch (error) {
@@ -149,6 +190,38 @@ async function saveProfile() {
 						:autosize="{ minRows: 4, maxRows: 10 }"
 						placeholder='{"aws_region": "us-east-1"}'
 					/>
+				</div>
+
+				<div class="space-y-2 rounded-md border border-slate-100 bg-slate-50/60 p-3">
+					<div class="flex items-center justify-between">
+						<label class="text-xs font-medium text-slate-600">Auth Descriptor</label>
+						<NSwitch v-model:value="authForm.enabled" size="small" />
+					</div>
+					<div v-if="authForm.enabled" class="space-y-2">
+						<div class="space-y-1">
+							<label class="text-xs text-slate-500">Provider</label>
+							<NInput
+								v-model:value="authForm.provider"
+								placeholder="例如：s3 / gcs / azure"
+							/>
+						</div>
+						<div class="space-y-1">
+							<label class="text-xs text-slate-500">Params (JSON)</label>
+							<NInput
+								v-model:value="authForm.paramsJson"
+								type="textarea"
+								:autosize="{ minRows: 3, maxRows: 8 }"
+								placeholder='{"aws_access_key_id": "...", "aws_secret_access_key": "..."}'
+							/>
+						</div>
+						<div class="flex items-center justify-between text-xs text-slate-500">
+							<span>保存到 Stronghold</span>
+							<NSwitch v-model:value="authForm.saveToStronghold" size="small" />
+						</div>
+						<p v-if="!authForm.saveToStronghold" class="text-xs text-amber-500">
+							关闭 Stronghold 将明文写入连接档案。
+						</p>
+					</div>
 				</div>
 
 				<div class="flex items-center justify-end gap-2 pt-2">

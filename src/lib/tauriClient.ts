@@ -3,21 +3,41 @@ import { invoke } from "@tauri-apps/api/core"
 import type {
 	AddColumnsResponseV1,
 	AlterColumnsResponseV1,
+	CheckoutTableLatestRequestV1,
+	CheckoutTableLatestResponseV1,
+	CheckoutTableVersionRequestV1,
+	CheckoutTableVersionResponseV1,
+	CloneTableRequestV1,
+	CloneTableResponseV1,
+	CombinedSearchRequestV1,
 	ConnectProfile,
 	ConnectResponseV1,
 	CreateTableResponseV1,
 	CreateIndexResponseV1,
+	DisconnectResponseV1,
 	DropColumnsResponseV1,
 	DropIndexResponseV1,
 	DropTableResponseV1,
 	FieldDataType,
 	FtsSearchRequestV1,
+	GetTableVersionRequestV1,
+	GetTableVersionResponseV1,
 	IndexTypeV1,
+	ListVersionsRequestV1,
+	ListVersionsResponseV1,
 	ListTablesResponseV1,
 	ListIndexesResponseV1,
 	DeleteRowsResponseV1,
+	ExportDataRequestV1,
+	ExportDataResponseV1,
+	ImportDataRequestV1,
+	ImportDataResponseV1,
+	OptimizeTableRequestV1,
+	OptimizeTableResponseV1,
 	QueryFilterRequestV1,
 	QueryResponseV1,
+	RenameTableRequestV1,
+	RenameTableResponseV1,
 	ResultEnvelope,
 	ScanRequestV1,
 	ScanResponseV1,
@@ -72,6 +92,12 @@ export async function connectV1(
 	return invokeV1("connect_v1", { request: { profile } })
 }
 
+export async function disconnectV1(
+	connectionId: string
+): Promise<ResultEnvelope<DisconnectResponseV1>> {
+	return invokeV1("disconnect_v1", { request: { connectionId } })
+}
+
 export async function listTablesV1(
 	connectionId: string
 ): Promise<ResultEnvelope<ListTablesResponseV1>> {
@@ -84,6 +110,12 @@ export async function dropTableV1(
 	namespace?: string[]
 ): Promise<ResultEnvelope<DropTableResponseV1>> {
 	return invokeV1("drop_table_v1", { request: { connectionId, tableName, namespace } })
+}
+
+export async function renameTableV1(
+	request: RenameTableRequestV1
+): Promise<ResultEnvelope<RenameTableResponseV1>> {
+	return invokeV1("rename_table_v1", { request })
 }
 
 export async function listIndexesV1(
@@ -126,6 +158,36 @@ export async function openTableV1(
 
 export async function getSchemaV1(tableId: string): Promise<ResultEnvelope<SchemaDefinition>> {
 	return invokeV1("get_schema_v1", { request: { tableId } })
+}
+
+export async function listVersionsV1(
+	request: ListVersionsRequestV1
+): Promise<ResultEnvelope<ListVersionsResponseV1>> {
+	return invokeV1("list_versions_v1", { request })
+}
+
+export async function getTableVersionV1(
+	request: GetTableVersionRequestV1
+): Promise<ResultEnvelope<GetTableVersionResponseV1>> {
+	return invokeV1("get_table_version_v1", { request })
+}
+
+export async function checkoutTableVersionV1(
+	request: CheckoutTableVersionRequestV1
+): Promise<ResultEnvelope<CheckoutTableVersionResponseV1>> {
+	return invokeV1("checkout_table_version_v1", { request })
+}
+
+export async function checkoutTableLatestV1(
+	request: CheckoutTableLatestRequestV1
+): Promise<ResultEnvelope<CheckoutTableLatestResponseV1>> {
+	return invokeV1("checkout_table_latest_v1", { request })
+}
+
+export async function cloneTableV1(
+	request: CloneTableRequestV1
+): Promise<ResultEnvelope<CloneTableResponseV1>> {
+	return invokeV1("clone_table_v1", { request })
 }
 
 export async function addColumnsV1(
@@ -186,10 +248,34 @@ export async function deleteRowsV1(
 	return invokeV1("delete_rows_v1", { request: { tableId, filter } })
 }
 
+export async function importDataV1(
+	request: ImportDataRequestV1
+): Promise<ResultEnvelope<ImportDataResponseV1>> {
+	return invokeV1("import_data_v1", { request })
+}
+
+export async function exportDataV1(
+	request: ExportDataRequestV1
+): Promise<ResultEnvelope<ExportDataResponseV1>> {
+	return invokeV1("export_data_v1", { request })
+}
+
+export async function optimizeTableV1(
+	request: OptimizeTableRequestV1
+): Promise<ResultEnvelope<OptimizeTableResponseV1>> {
+	return invokeV1("optimize_table_v1", { request })
+}
+
 export async function queryFilterV1(
 	request: QueryFilterRequestV1
 ): Promise<ResultEnvelope<QueryResponseV1>> {
 	return invokeV1("query_filter_v1", { request })
+}
+
+export async function combinedSearchV1(
+	request: CombinedSearchRequestV1
+): Promise<ResultEnvelope<QueryResponseV1>> {
+	return invokeV1("combined_search_v1", { request })
 }
 
 export async function vectorSearchV1(

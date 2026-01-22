@@ -6,6 +6,8 @@ import { FolderOpen } from "lucide-vue-next"
 import { computed, onMounted, ref } from "vue"
 import { useRoute } from "vue-router"
 
+import type { AuthDescriptor } from "../ipc/v1"
+import { saveCredential } from "../lib/credentialVault"
 import type { ConnectionKind } from "../lib/connectionKind"
 import { getConnectionKind } from "../lib/connectionKind"
 import { normalizeConnectUri } from "../lib/lancedbUri"
@@ -21,6 +23,13 @@ const form = ref({
 	name: "",
 	uri: "",
 	storageOptionsJson: "{}",
+})
+const authForm = ref({
+	enabled: false,
+	provider: "",
+	paramsJson: "{}",
+	saveToStronghold: true,
+	reference: "",
 })
 const errorMessage = ref("")
 const isSubmitting = ref(false)
@@ -53,6 +62,17 @@ const uriPlaceholder = computed(() => {
 
 const showLocalPicker = computed(() => editKind.value === "local")
 
+function parseAuthParams(raw: string): Record<string, string> {
+	if (!raw.trim()) {
+		return {}
+	}
+	const parsed = JSON.parse(raw) as Record<string, unknown>
+	if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+		throw new Error("auth params 必须是 JSON 对象")
+	}
+	return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, String(value)]))
+}
+
 async function loadProfile() {
 	errorMessage.value = ""
 	const profileId = String(route.query.profileId ?? "").trim()
@@ -74,6 +94,32 @@ async function loadProfile() {
 			name: profile.name ?? "",
 			uri: profile.uri ?? "",
 			storageOptionsJson: JSON.stringify(profile.storageOptions ?? {}, null, 2),
+		}
+		const auth = profile.auth ?? { type: "none" }
+		if (auth.type === "none") {
+			authForm.value = {
+				enabled: false,
+				provider: "",
+				paramsJson: "{}",
+				saveToStronghold: true,
+				reference: "",
+			}
+		} else if (auth.type === "inline") {
+			authForm.value = {
+				enabled: true,
+				provider: auth.provider,
+				paramsJson: JSON.stringify(auth.params ?? {}, null, 2),
+				saveToStronghold: false,
+				reference: "",
+			}
+		} else {
+			authForm.value = {
+				enabled: true,
+				provider: auth.provider,
+				paramsJson: "{}",
+				saveToStronghold: true,
+				reference: auth.reference,
+			}
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "读取连接档案失败"
@@ -131,6 +177,40 @@ async function saveProfile() {
 
 	isSubmitting.value = true
 	try {
+		let auth: AuthDescriptor = { type: "none" }
+		if (authForm.value.enabled) {
+			const provider = authForm.value.provider.trim()
+			if (!provider) {
+				errorMessage.value = "请填写认证 Provider"
+				return
+			}
+			const rawParams = authForm.value.paramsJson.trim()
+			const paramsProvided = rawParams !== "" && rawParams !== "{}"
+			const params = parseAuthParams(authForm.value.paramsJson)
+			if (authForm.value.saveToStronghold) {
+				if (!paramsProvided && authForm.value.reference.trim()) {
+					auth = {
+						type: "secret_ref",
+						provider,
+						reference: authForm.value.reference.trim(),
+					}
+				} else {
+					const reference = await saveCredential({
+						provider,
+						params,
+						label: name,
+					})
+					authForm.value.reference = reference
+					auth = { type: "secret_ref", provider, reference }
+				}
+			} else {
+				if (!paramsProvided && authForm.value.reference.trim()) {
+					errorMessage.value = "请填写凭证参数，或保持 Stronghold 保存"
+					return
+				}
+				auth = { type: "inline", provider, params }
+			}
+		}
 		await emitTo(mainWindowLabel, updateProfileEvent, {
 			id: form.value.id,
 			name,
@@ -138,6 +218,7 @@ async function saveProfile() {
 			storageOptionsJson: form.value.storageOptionsJson?.trim()
 				? form.value.storageOptionsJson
 				: "{}",
+			auth,
 		})
 		await closeDialog()
 	} catch (error) {
@@ -195,6 +276,48 @@ async function saveProfile() {
 							:autosize="{ minRows: 4, maxRows: 10 }"
 							placeholder='{"aws_region": "us-east-1"}'
 						/>
+					</div>
+
+					<div class="space-y-2 rounded-md border border-slate-100 bg-slate-50/60 p-3">
+						<div class="flex items-center justify-between">
+							<label class="text-xs font-medium text-slate-600">Auth Descriptor</label>
+							<NSwitch v-model:value="authForm.enabled" size="small" />
+						</div>
+						<div v-if="authForm.enabled" class="space-y-2">
+							<div class="space-y-1">
+								<label class="text-xs text-slate-500">Provider</label>
+								<NInput
+									v-model:value="authForm.provider"
+									placeholder="例如：s3 / gcs / azure"
+								/>
+							</div>
+							<div class="space-y-1">
+								<label class="text-xs text-slate-500">Params (JSON)</label>
+								<NInput
+									v-model:value="authForm.paramsJson"
+									type="textarea"
+									:autosize="{ minRows: 3, maxRows: 8 }"
+									placeholder='{"aws_access_key_id": "...", "aws_secret_access_key": "..."}'
+								/>
+							</div>
+							<div class="flex items-center justify-between text-xs text-slate-500">
+								<span>保存到 Stronghold</span>
+								<NSwitch v-model:value="authForm.saveToStronghold" size="small" />
+							</div>
+							<div
+								v-if="authForm.saveToStronghold && authForm.reference"
+								class="space-y-1"
+							>
+								<label class="text-xs text-slate-500">Stronghold 引用</label>
+								<NInput v-model:value="authForm.reference" readonly />
+								<p class="text-xs text-slate-400">
+									保持 params 为空将沿用当前引用。
+								</p>
+							</div>
+							<p v-if="!authForm.saveToStronghold" class="text-xs text-amber-500">
+								关闭 Stronghold 将明文写入连接档案。
+							</p>
+						</div>
 					</div>
 
 					<div class="flex items-center justify-end gap-2 pt-2">

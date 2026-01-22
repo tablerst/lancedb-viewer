@@ -77,6 +77,14 @@ pub enum DataFormat {
     Arrow,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DataFileFormatV1 {
+    Csv,
+    Parquet,
+    Jsonl,
+}
+
 impl Default for DataFormat {
     fn default() -> Self {
         DataFormat::Json
@@ -169,6 +177,19 @@ pub struct ConnectResponseV1 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DisconnectRequestV1 {
+    pub connection_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisconnectResponseV1 {
+    pub connection_id: String,
+    pub released_tables: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListTablesRequestV1 {
     pub connection_id: String,
 }
@@ -198,6 +219,25 @@ pub struct DropTableRequestV1 {
 #[serde(rename_all = "camelCase")]
 pub struct DropTableResponseV1 {
     pub table_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameTableRequestV1 {
+    pub connection_id: String,
+    pub table_name: String,
+    pub new_table_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_namespace: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameTableResponseV1 {
+    pub table_name: String,
+    pub new_table_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -425,6 +465,84 @@ pub struct DeleteRowsResponseV1 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportDataRequestV1 {
+    pub table_id: String,
+    pub path: String,
+    pub format: DataFileFormatV1,
+    #[serde(default)]
+    pub mode: WriteDataMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_header: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delimiter: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportDataResponseV1 {
+    pub table_id: String,
+    pub rows: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportDataRequestV1 {
+    pub table_id: String,
+    pub path: String,
+    pub format: DataFileFormatV1,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projection: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delimiter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub with_header: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportDataResponseV1 {
+    pub path: String,
+    pub rows: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OptimizeActionV1 {
+    Compact,
+    Vacuum,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OptimizeTableRequestV1 {
+    pub table_id: String,
+    pub action: OptimizeActionV1,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_rows_per_fragment: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub older_than_days: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delete_unverified: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_if_tagged_old_versions: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OptimizeTableResponseV1 {
+    pub table_id: String,
+    pub action: OptimizeActionV1,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateTableRequestV1 {
     pub connection_id: String,
     pub table_name: String,
@@ -527,6 +645,113 @@ pub struct ScanResponseV1 {
     pub chunk: DataChunk,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionInfoV1 {
+    pub version: u64,
+    pub timestamp: String,
+    pub metadata: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListVersionsRequestV1 {
+    pub table_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListVersionsResponseV1 {
+    pub versions: Vec<VersionInfoV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTableVersionRequestV1 {
+    pub table_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTableVersionResponseV1 {
+    pub table_id: String,
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutTableVersionRequestV1 {
+    pub table_id: String,
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutTableVersionResponseV1 {
+    pub table_id: String,
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutTableLatestRequestV1 {
+    pub table_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutTableLatestResponseV1 {
+    pub table_id: String,
+    pub version: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloneTableRequestV1 {
+    pub connection_id: String,
+    pub table_id: String,
+    pub target_table_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_version: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_tag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_shallow: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloneTableResponseV1 {
+    pub table_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CombinedSearchRequestV1 {
+    pub table_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vector: Option<Vec<f32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vector_column: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub columns: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub projection: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nprobes: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refine_factor: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from "vue-router"
 
 import CapabilitiesView from "./views/CapabilitiesView.vue"
+import CredentialsView from "./views/CredentialsView.vue"
 import ExplorerView from "./views/ExplorerView.vue"
 import EditConnectionDialog from "./views/EditConnectionDialog.vue"
 import NewConnectionDialog from "./views/NewConnectionDialog.vue"
@@ -11,6 +12,7 @@ export const router = createRouter({
 	routes: [
 		{ path: "/", name: "explorer", component: ExplorerView },
 		{ path: "/search", name: "search", component: SearchView },
+			{ path: "/credentials", name: "credentials", component: CredentialsView },
 		{ path: "/capabilities", name: "capabilities", component: CapabilitiesView },
 		{
 			path: "/dialog/new-connection",
