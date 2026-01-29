@@ -68,15 +68,10 @@ const statusTextClass = computed(() => {
 	}
 	return "text-slate-500"
 })
-const showCollapsedStatus = computed(
-	() => isConnecting.value || isDisconnecting.value || !isConnected.value
-)
+const showCollapsedStatus = computed(() => isConnecting.value || isDisconnecting.value)
 const lastConnectedLabel = computed(() => formatTimestamp(props.profile.lastConnectedAt))
 const collapsedTitle = computed(() => {
-	if (isConnecting.value || !isConnected.value) {
-		return `${props.profile.name} · ${statusText.value} · ${kindLabel.value}`
-	}
-	return `${props.profile.name} · ${kindLabel.value}`
+	return `${props.profile.name} · ${statusText.value} · ${kindLabel.value}`
 })
 
 const isExpanded = ref(true)
@@ -123,13 +118,14 @@ function handleContextMenu(event: MouseEvent) {
 		class="group shadow-sm transition-shadow hover:shadow-md"
 		:class="[
 			selected ? 'border-sky-200 ring-1 ring-sky-200' : '',
-			collapsed ? 'min-h-[104px] bg-slate-50/40 hover:bg-slate-50/70' : '',
+			collapsed ? 'min-h-[84px] bg-slate-50/40 hover:bg-slate-50/70' : '',
 		]"
+		:content-style="collapsed ? { padding: '10px 8px' } : undefined"
 		@contextmenu="handleContextMenu"
 	>
-		<div v-if="collapsed" class="flex flex-col items-center gap-2">
+		<div v-if="collapsed" class="flex flex-col items-center gap-1.5">
 			<button
-				class="group flex w-full flex-col items-center gap-1.5 rounded-md px-2 py-1 text-center transition hover:bg-slate-100/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
+				class="group flex w-full flex-col items-center gap-1 rounded-md px-2 py-1.5 text-center transition hover:bg-slate-100/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
 				:title="collapsedTitle"
 				@click="emit('select')"
 			>
@@ -142,15 +138,17 @@ function handleContextMenu(event: MouseEvent) {
 						{{ profile.name }}
 					</div>
 				</div>
-				<div v-if="showCollapsedStatus" class="text-[10px] font-medium" :class="statusTextClass">
+				<div
+					v-if="showCollapsedStatus"
+					class="text-[10px] font-medium leading-tight"
+					:class="statusTextClass"
+				>
 					{{ statusText }}
 				</div>
 			</button>
-			<div class="flex items-center justify-center">
-				<NTag size="small" :type="tagType" :bordered="false" class="text-[10px]">
-					{{ kindLabel }}
-				</NTag>
-			</div>
+			<NTag size="small" :type="tagType" :bordered="false" class="text-[10px]">
+				{{ kindLabel }}
+			</NTag>
 		</div>
 
 		<div v-else>

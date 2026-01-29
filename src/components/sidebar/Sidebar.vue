@@ -76,9 +76,9 @@ let unlistenUpdateProfile: (() => void) | null = null
 type ProfileFilterKind = "all" | ConnectionKind
 const filterKind = ref<ProfileFilterKind>("all")
 
-const expandedWidth = "clamp(240px, 26vw, 340px)"
-const collapsedWidth = "clamp(64px, 8vw, 84px)"
-const collapsedItemSize = 116
+const expandedWidth = "320px"
+const collapsedWidth = "72px"
+const collapsedItemSize = 96
 
 const filteredProfiles = computed(() => {
 	if (filterKind.value === "all") {
@@ -409,19 +409,17 @@ async function handleContextMenuSelect(key: string | number) {
 			</NButton>
 		</div>
 
-		<div
-			class="flex items-center pt-4"
-			:class="isCollapsed ? 'justify-center px-3' : 'justify-between px-4'"
-		>
-			<div v-if="!isCollapsed" class="min-w-0">
-				<div class="text-sm font-semibold text-slate-900">连接</div>
-				<div class="text-xs text-slate-500">选择连接后浏览表 / 配置凭证</div>
-			</div>
-
+		<div class="border-b border-slate-100 px-4 py-3" :class="isCollapsed ? 'px-3' : 'px-4'">
 			<div
-				class="flex items-center gap-2"
-				:class="isCollapsed ? 'flex-col justify-center' : 'flex-row'"
+				class="flex"
+				:class="isCollapsed ? 'flex-col items-center gap-2' : 'items-start justify-between gap-3'"
 			>
+				<div v-if="!isCollapsed" class="min-w-0 space-y-0.5">
+					<div class="text-sm font-semibold leading-tight text-slate-900">连接</div>
+					<div class="text-xs leading-snug text-slate-500">选择连接后浏览表 / 配置凭证</div>
+				</div>
+
+				<div class="flex gap-2" :class="isCollapsed ? 'flex-col items-center' : 'items-center pt-0.5'">
 				<NPopover trigger="click" placement="bottom-start">
 					<template #trigger>
 						<NButton size="small" quaternary>
@@ -448,10 +446,11 @@ async function handleContextMenuSelect(key: string | number) {
 					<Plus class="h-4 w-4" />
 					<span v-if="!isCollapsed" class="ml-2">新建</span>
 				</NButton>
+				</div>
 			</div>
 		</div>
 
-		<div class="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-4">
+		<div class="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-4">
 			<div class="min-h-0 flex-1 overflow-y-auto">
 				<NEmpty v-if="!filteredProfiles.length" description="暂无连接档案" />
 				<template v-else>
