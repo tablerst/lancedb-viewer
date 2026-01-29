@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, watchEffect } from "vue"
 import { RouterView, useRoute } from "vue-router"
-
+import PrimaryNav from "./components/layout/PrimaryNav.vue"
 import StatusMessageBridge from "./components/StatusMessageBridge.vue"
 import Sidebar from "./components/sidebar/Sidebar.vue"
 import { useConnection } from "./composables/useConnection"
@@ -90,38 +90,59 @@ provideWorkspace({
 })
 
 const isDialogRoute = computed(() => route.meta.layout === "dialog")
+
+watchEffect(() => {
+	const raw = route.params.id
+	if (typeof raw !== "string") {
+		return
+	}
+	if (!profiles.value.length) {
+		return
+	}
+	if (activeProfileId.value === raw) {
+		return
+	}
+	const exists = profiles.value.some((profile) => profile.id === raw)
+	if (!exists) {
+		return
+	}
+	void selectProfile(raw)
+})
 </script>
 
 <template>
 	<NConfigProvider :theme-overrides="themeOverrides">
 		<NGlobalStyle />
 		<NMessageProvider>
-			<StatusMessageBridge :status-message="statusMessage" :error-message="errorMessage" />
-			<div class="h-screen w-screen overflow-hidden bg-slate-50">
-				<div v-if="isDialogRoute" class="h-full w-full">
-					<RouterView />
-				</div>
-				<div v-else class="flex h-full min-h-0">
-					<Sidebar
-						:profiles="profiles"
-						:active-profile-id="activeProfileId"
-						:connection-states="connectionStates"
-						:on-select-profile="selectProfile"
-						:on-connect-profile="connectProfile"
-						:on-disconnect-profile="disconnectProfile"
-						:on-refresh-tables="refreshTables"
-						:on-open-table="openTable"
-					/>
+			<NDialogProvider>
+				<StatusMessageBridge :status-message="statusMessage" :error-message="errorMessage" />
+				<div class="h-screen w-screen overflow-hidden bg-slate-50">
+					<div v-if="isDialogRoute" class="h-full w-full">
+						<RouterView />
+					</div>
+					<div v-else class="flex h-full min-h-0">
+						<PrimaryNav />
+						<Sidebar
+							:profiles="profiles"
+							:active-profile-id="activeProfileId"
+							:connection-states="connectionStates"
+							:on-select-profile="selectProfile"
+							:on-connect-profile="connectProfile"
+							:on-disconnect-profile="disconnectProfile"
+							:on-refresh-tables="refreshTables"
+							:on-open-table="openTable"
+						/>
 
-					<main class="min-w-0 flex-1 overflow-y-auto">
-						<div class="p-6">
-							<div class="mx-auto w-full max-w-[1400px]">
-								<RouterView />
+						<main class="min-w-0 flex-1 overflow-y-auto">
+							<div class="p-6">
+								<div class="mx-auto w-full max-w-[1400px]">
+									<RouterView />
+								</div>
 							</div>
-						</div>
-					</main>
+						</main>
+					</div>
 				</div>
-			</div>
+			</NDialogProvider>
 		</NMessageProvider>
 	</NConfigProvider>
 </template>

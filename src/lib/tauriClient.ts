@@ -12,26 +12,26 @@ import type {
 	CombinedSearchRequestV1,
 	ConnectProfile,
 	ConnectResponseV1,
-	CreateTableResponseV1,
 	CreateIndexResponseV1,
+	CreateTableResponseV1,
+	DeleteRowsResponseV1,
 	DisconnectResponseV1,
 	DropColumnsResponseV1,
 	DropIndexResponseV1,
 	DropTableResponseV1,
+	ExportDataRequestV1,
+	ExportDataResponseV1,
 	FieldDataType,
 	FtsSearchRequestV1,
 	GetTableVersionRequestV1,
 	GetTableVersionResponseV1,
-	IndexTypeV1,
-	ListVersionsRequestV1,
-	ListVersionsResponseV1,
-	ListTablesResponseV1,
-	ListIndexesResponseV1,
-	DeleteRowsResponseV1,
-	ExportDataRequestV1,
-	ExportDataResponseV1,
 	ImportDataRequestV1,
 	ImportDataResponseV1,
+	IndexTypeV1,
+	ListIndexesResponseV1,
+	ListTablesResponseV1,
+	ListVersionsRequestV1,
+	ListVersionsResponseV1,
 	OptimizeTableRequestV1,
 	OptimizeTableResponseV1,
 	QueryFilterRequestV1,
@@ -197,18 +197,16 @@ export async function addColumnsV1(
 	return invokeV1("add_columns_v1", { request: { tableId, columns } })
 }
 
-export async function alterColumnsV1(
-	request: {
-		tableId: string
-		columns: {
-			path: string
-			rename?: string
-			nullable?: boolean
-			dataType?: FieldDataType
-			vectorLength?: number
-		}[]
-	}
-): Promise<ResultEnvelope<AlterColumnsResponseV1>> {
+export async function alterColumnsV1(request: {
+	tableId: string
+	columns: {
+		path: string
+		rename?: string
+		nullable?: boolean
+		dataType?: FieldDataType
+		vectorLength?: number
+	}[]
+}): Promise<ResultEnvelope<AlterColumnsResponseV1>> {
 	return invokeV1("alter_columns_v1", { request })
 }
 
@@ -231,13 +229,11 @@ export async function writeRowsV1(
 	return invokeV1("write_rows_v1", { request: { tableId, rows, mode } })
 }
 
-export async function updateRowsV1(
-	request: {
-		tableId: string
-		filter?: string
-		updates: { column: string; expr: string }[]
-	}
-): Promise<ResultEnvelope<UpdateRowsResponseV1>> {
+export async function updateRowsV1(request: {
+	tableId: string
+	filter?: string
+	updates: { column: string; expr: string }[]
+}): Promise<ResultEnvelope<UpdateRowsResponseV1>> {
 	return invokeV1("update_rows_v1", { request })
 }
 

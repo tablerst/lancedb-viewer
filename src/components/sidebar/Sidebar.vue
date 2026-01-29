@@ -1,26 +1,29 @@
 <script setup lang="ts">
 import { listen } from "@tauri-apps/api/event"
-import { getCurrentWindow } from "@tauri-apps/api/window"
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import {
 	ChevronLeft,
 	ChevronRight,
-	Database,
 	Filter,
 	Key,
-	LayoutGrid,
-	ListChecks,
+	Pencil,
+	Plug,
 	Plus,
-	Search,
+	RefreshCcw,
+	Table,
+	Trash2,
 } from "lucide-vue-next"
-import { computed, onBeforeUnmount, onMounted, ref } from "vue"
-import { useRoute, useRouter } from "vue-router"
+import { useDialog } from "naive-ui"
+import type { DropdownMixedOption } from "naive-ui/lib/dropdown/src/interface"
+import { computed, h, onBeforeUnmount, onMounted, ref } from "vue"
+import { useRouter } from "vue-router"
 
 import type { ConnectionState } from "../../composables/useConnection"
 import { useWorkspace } from "../../composables/workspaceContext"
+import type { AuthDescriptor } from "../../ipc/v1"
 import type { ConnectionKind } from "../../lib/connectionKind"
 import { getConnectionKind, getConnectionKindLabel } from "../../lib/connectionKind"
-import type { AuthDescriptor } from "../../ipc/v1"
 import type { StoredProfile } from "../../models/profile"
 import ConnectionItem from "./ConnectionItem.vue"
 
@@ -37,7 +40,7 @@ const props = defineProps<{
 
 const isCollapsed = ref(false)
 const router = useRouter()
-const route = useRoute()
+const dialog = useDialog()
 
 const {
 	profileForm,
@@ -88,24 +91,6 @@ const shouldVirtualize = computed(() => isCollapsed.value && filteredProfiles.va
 
 const sidebarWidth = computed(() => (isCollapsed.value ? collapsedWidth : expandedWidth))
 const virtualItemSize = computed(() => (isCollapsed.value ? collapsedItemSize : 92))
-
-const navItems = [
-	{ key: "explorer", label: "资源浏览", to: "/", icon: LayoutGrid },
-	{ key: "search", label: "检索", to: "/search", icon: Search },
-	{ key: "credentials", label: "凭证", to: "/credentials", icon: Key },
-	{ key: "capabilities", label: "能力地图", to: "/capabilities", icon: ListChecks },
-] as const
-
-function isActiveNav(to: string) {
-	return route.path === to
-}
-
-function navigate(to: string) {
-	if (route.path === to) {
-		return
-	}
-	void router.push(to)
-}
 
 onMounted(async () => {
 	try {
@@ -234,24 +219,151 @@ async function handleDeleteProfile(profileId: string) {
 	}
 }
 
-async function selectAndConnect(profileId: string) {
-	await props.onSelectProfile(profileId)
-	await props.onConnectProfile(profileId)
-}
-
-async function selectAndDisconnect(profileId: string) {
-	await props.onSelectProfile(profileId)
-	await props.onDisconnectProfile(profileId)
-}
-
-async function selectAndRefresh(profileId: string) {
-	await props.onSelectProfile(profileId)
-	await props.onRefreshTables(profileId)
-}
-
 async function selectAndOpenTable(profileId: string, tableName: string) {
 	await props.onSelectProfile(profileId)
 	await props.onOpenTable(profileId, tableName)
+}
+
+function getConnectionFlags(profileId: string) {
+	const state = props.connectionStates[profileId] ?? null
+	const isConnected = Boolean(state?.connectionId?.value)
+	const isConnecting = state?.isConnecting?.value ?? false
+	const isDisconnecting = state?.isDisconnecting?.value ?? false
+	const isRefreshing = state?.isRefreshing?.value ?? false
+	return {
+		isConnected,
+		isConnecting,
+		isDisconnecting,
+		isRefreshing,
+	}
+}
+
+const contextMenuVisible = ref(false)
+const contextMenuX = ref<number | null>(null)
+const contextMenuY = ref<number | null>(null)
+const contextMenuProfile = ref<StoredProfile | null>(null)
+
+function hideContextMenu() {
+	contextMenuVisible.value = false
+}
+
+function handleContextMenuUpdateShow(value: boolean) {
+	contextMenuVisible.value = value
+}
+
+function showProfileContextMenu(profile: StoredProfile, event: MouseEvent) {
+	event.preventDefault()
+	contextMenuProfile.value = profile
+	contextMenuX.value = event.clientX
+	contextMenuY.value = event.clientY
+	contextMenuVisible.value = true
+}
+
+const contextMenuOptions = computed<DropdownMixedOption[]>(() => {
+	const profile = contextMenuProfile.value
+	if (!profile) {
+		return []
+	}
+	const { isConnected, isConnecting, isDisconnecting, isRefreshing } = getConnectionFlags(
+		profile.id
+	)
+	const connectLabel = isConnected ? "重连" : "连接"
+
+	const canConnect = !isConnecting && !isDisconnecting
+	const canDisconnect = isConnected && !isDisconnecting
+	const canRefresh = isConnected && !isRefreshing && !isDisconnecting && !isConnecting
+	const canCreateTable = isConnected && !isDisconnecting && !isConnecting
+
+	return [
+		{
+			key: "connect",
+			label: connectLabel,
+			disabled: !canConnect,
+			icon: () => h(Plug, { class: "h-4 w-4" }),
+		},
+		{
+			key: "disconnect",
+			label: "断开",
+			disabled: !canDisconnect,
+			icon: () => h(Plug, { class: "h-4 w-4" }),
+		},
+		{
+			key: "refresh",
+			label: "刷新表",
+			disabled: !canRefresh,
+			icon: () => h(RefreshCcw, { class: "h-4 w-4" }),
+		},
+		{
+			key: "create-table",
+			label: "创建表…",
+			disabled: !canCreateTable,
+			icon: () => h(Table, { class: "h-4 w-4" }),
+			props: {
+				title: canCreateTable ? "创建新表" : "仅已连接时可用",
+			},
+		},
+		{ type: "divider", key: "d-actions" },
+		{ key: "credentials", label: "凭证…", icon: () => h(Key, { class: "h-4 w-4" }) },
+		{ key: "edit", label: "编辑…", icon: () => h(Pencil, { class: "h-4 w-4" }) },
+		{ type: "divider", key: "d-danger" },
+		{
+			key: "delete",
+			label: () => h("span", { class: "font-medium text-rose-600" }, "删除连接…"),
+			icon: () => h(Trash2, { class: "h-4 w-4" }),
+			props: { class: "text-rose-600" },
+		},
+	]
+})
+
+async function handleContextMenuSelect(key: string | number) {
+	const profile = contextMenuProfile.value
+	hideContextMenu()
+	if (!profile) {
+		return
+	}
+
+	try {
+		switch (String(key)) {
+			case "connect":
+				await props.onConnectProfile(profile.id)
+				break
+			case "disconnect":
+				await props.onDisconnectProfile(profile.id)
+				break
+			case "refresh":
+				await props.onRefreshTables(profile.id)
+				break
+			case "create-table":
+				await props.onSelectProfile(profile.id)
+				await router.push({
+					path: `/connections/${profile.id}`,
+					query: { action: "create-table" },
+				})
+				break
+			case "credentials":
+				await router.push(`/connections/${profile.id}/credentials`)
+				break
+			case "edit":
+				await openEditDialog(profile.id)
+				break
+			case "delete":
+				dialog.warning({
+					title: "删除连接",
+					content: `确定删除连接档案 ${profile.name} 吗？该操作不可撤销。`,
+					positiveText: "删除",
+					negativeText: "取消",
+					onPositiveClick: async () => {
+						await handleDeleteProfile(profile.id)
+					},
+				})
+				break
+			default:
+				break
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "执行操作失败"
+		setError(message)
+	}
 }
 </script>
 
@@ -260,6 +372,28 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 		class="relative flex h-full shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 ease-out"
 		:style="{ width: sidebarWidth }"
 	>
+		<NDropdown
+			:show="contextMenuVisible"
+			:options="contextMenuOptions"
+			:x="contextMenuX ?? undefined"
+			:y="contextMenuY ?? undefined"
+			trigger="manual"
+			placement="bottom-start"
+			:show-arrow="false"
+			@select="handleContextMenuSelect"
+			@clickoutside="hideContextMenu"
+			@update:show="handleContextMenuUpdateShow"
+		>
+			<!--
+				Naive NDropdown 复用 NPopover：默认插槽会被当作 trigger。
+				必须且只能提供 1 个子节点，否则会触发 vueuc/follower 的运行时错误。
+				这里放一个不可见锚点即可（实际弹出位置由 x/y 控制）。
+			-->
+			<div
+				aria-hidden="true"
+				class="pointer-events-none fixed left-0 top-0 h-0 w-0 overflow-hidden"
+			/>
+		</NDropdown>
 		<div class="absolute right-0 top-1/2 z-10 -translate-y-1/2 translate-x-1/2">
 			<NButton
 				size="tiny"
@@ -279,46 +413,11 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 			class="flex items-center pt-4"
 			:class="isCollapsed ? 'justify-center px-3' : 'justify-between px-4'"
 		>
-			<div class="flex items-center gap-3">
-				<div
-					class="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500 text-white"
-				>
-					<Database class="h-5 w-5" />
-				</div>
-				<div v-if="!isCollapsed" class="min-w-0">
-					<div class="text-sm font-semibold text-slate-900">LanceDB Studio</div>
-					<div class="text-xs text-slate-500">JSON-first IPC</div>
-				</div>
+			<div v-if="!isCollapsed" class="min-w-0">
+				<div class="text-sm font-semibold text-slate-900">连接</div>
+				<div class="text-xs text-slate-500">选择连接后浏览表 / 配置凭证</div>
 			</div>
-			<div class="flex items-center gap-2">
-				<NTag v-if="!isCollapsed" size="small" type="info">v1</NTag>
-			</div>
-		</div>
 
-		<div class="mt-3" :class="isCollapsed ? 'px-2' : 'px-3'">
-			<div
-				class="flex gap-2"
-				:class="isCollapsed ? 'flex-col items-center' : 'flex-row'"
-			>
-				<NButton
-					v-for="item in navItems"
-					:key="item.key"
-					size="small"
-					quaternary
-					:title="item.label"
-					:class="[
-						isActiveNav(item.to) ? 'text-sky-600 bg-sky-50/80' : 'text-slate-600',
-						isCollapsed ? 'h-10 w-10 justify-center' : 'px-3',
-					]"
-					@click="navigate(item.to)"
-				>
-					<component :is="item.icon" class="h-4 w-4" />
-					<span v-if="!isCollapsed" class="ml-2">{{ item.label }}</span>
-				</NButton>
-			</div>
-		</div>
-
-		<div class="mt-4 px-3" :class="isCollapsed ? 'px-2' : 'px-3'">
 			<div
 				class="flex items-center gap-2"
 				:class="isCollapsed ? 'flex-col justify-center' : 'flex-row'"
@@ -370,12 +469,8 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 									:selected="item.id === activeProfileId"
 									:collapsed="isCollapsed"
 									@select="onSelectProfile(item.id)"
-									@connect="selectAndConnect(item.id)"
-									@disconnect="selectAndDisconnect(item.id)"
-									@refresh="selectAndRefresh(item.id)"
 									@open-table="(name) => selectAndOpenTable(item.id, name)"
-									@edit="openEditDialog(item.id)"
-									@delete="handleDeleteProfile(item.id)"
+									@open-menu="(event) => showProfileContextMenu(item, event)"
 								/>
 							</div>
 						</template>
@@ -389,12 +484,8 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 							:selected="profile.id === activeProfileId"
 							:collapsed="isCollapsed"
 							@select="onSelectProfile(profile.id)"
-							@connect="selectAndConnect(profile.id)"
-							@disconnect="selectAndDisconnect(profile.id)"
-							@refresh="selectAndRefresh(profile.id)"
 							@open-table="(name) => selectAndOpenTable(profile.id, name)"
-							@edit="openEditDialog(profile.id)"
-							@delete="handleDeleteProfile(profile.id)"
+							@open-menu="(event) => showProfileContextMenu(profile, event)"
 						/>
 					</div>
 				</template>

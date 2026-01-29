@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { NButton, NPopconfirm, NTag, type DataTableColumns } from "naive-ui"
+import { type DataTableColumns, NButton, NPopconfirm, NTag } from "naive-ui"
 import { computed, h, onMounted, ref } from "vue"
+import { useRouter } from "vue-router"
 
 import { useWorkspace } from "../composables/workspaceContext"
-import { formatTimestamp } from "../lib/formatters"
+import { collectCredentialReferences } from "../lib/credentialReferences"
 import type { CredentialSummary } from "../lib/credentialVault"
 import {
 	cleanupUnusedCredentials,
@@ -11,11 +12,14 @@ import {
 	deleteCredential,
 	listCredentials,
 } from "../lib/credentialVault"
-import { collectCredentialReferences } from "../lib/credentialReferences"
+import { formatTimestamp } from "../lib/formatters"
 
 type CredentialRow = CredentialSummary & { used: boolean }
 
-const { profiles, setStatus, setError, clearMessages } = useWorkspace()
+const router = useRouter()
+
+const { profiles, activeProfileId, activeProfile, setStatus, setError, clearMessages } =
+	useWorkspace()
 
 const credentials = ref<CredentialSummary[]>([])
 const isLoading = ref(false)
@@ -34,12 +38,17 @@ const tableData = computed<CredentialRow[]>(() =>
 	}))
 )
 
-const referencedCount = computed(() =>
-	tableData.value.filter((item) => item.used).length
-)
-const unusedCount = computed(() =>
-	tableData.value.filter((item) => !item.used).length
-)
+const referencedCount = computed(() => tableData.value.filter((item) => item.used).length)
+const unusedCount = computed(() => tableData.value.filter((item) => !item.used).length)
+
+function openActiveConnectionCredentials() {
+	const id = activeProfileId.value
+	if (!id) {
+		setError("请先选择连接")
+		return
+	}
+	void router.push(`/connections/${id}/credentials`)
+}
 
 async function loadCredentials() {
 	if (isLoading.value) {
@@ -137,12 +146,7 @@ const columns: DataTableColumns<CredentialRow> = [
 		title: "引用",
 		key: "reference",
 		ellipsis: { tooltip: true },
-		render: (row) =>
-			h(
-				"span",
-				{ class: "font-mono text-xs text-slate-600" },
-				row.reference
-			),
+		render: (row) => h("span", { class: "font-mono text-xs text-slate-600" }, row.reference),
 	},
 	{
 		title: "更新时间",
@@ -200,12 +204,22 @@ onMounted(() => {
 
 <template>
 	<div class="space-y-4">
-		<NCard size="small" title="凭证管理" class="shadow-sm">
+		<NCard size="small" title="凭证库（高级）" class="shadow-sm">
+			<div class="text-xs text-slate-500">
+				这是 Stronghold 的全局凭证库，用于查看/回收未引用凭证。日常配置建议在“连接 → 凭证”中完成。
+			</div>
 			<div class="flex flex-wrap items-center justify-between gap-2">
 				<div class="text-xs text-slate-500">
 					总数：{{ credentials.length }} · 引用中：{{ referencedCount }} · 未引用：{{ unusedCount }}
 				</div>
 				<div class="flex flex-wrap items-center gap-2">
+					<NButton
+						size="small"
+						:disabled="!activeProfileId"
+						@click="openActiveConnectionCredentials"
+					>
+						去当前连接配置（{{ activeProfile?.name ?? "未选择" }}）
+					</NButton>
 					<NButton size="small" :loading="isLoading" @click="loadCredentials">
 						刷新
 					</NButton>

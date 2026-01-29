@@ -85,9 +85,7 @@ function decodePayload(value: unknown): string {
 }
 
 function normalizeParams(input: Record<string, unknown>): Record<string, string> {
-	return Object.fromEntries(
-		Object.entries(input).map(([key, value]) => [key, String(value)])
-	)
+	return Object.fromEntries(Object.entries(input).map(([key, value]) => [key, String(value)]))
 }
 
 async function loadIndex(): Promise<CredentialSummary[]> {
@@ -174,9 +172,7 @@ export async function clearCredentials(): Promise<void> {
 	await saveIndex([])
 }
 
-export async function cleanupUnusedCredentials(
-	usedReferences: Set<string>
-): Promise<string[]> {
+export async function cleanupUnusedCredentials(usedReferences: Set<string>): Promise<string[]> {
 	const removed: string[] = []
 	const credentials = await loadIndex()
 	for (const credential of credentials) {

@@ -1,10 +1,9 @@
 import { computed, onMounted, ref } from "vue"
-
-import { cleanupUnusedCredentials } from "../lib/credentialVault"
+import type { AuthDescriptor } from "../ipc/v1"
 import { getConnectionKind } from "../lib/connectionKind"
 import { collectCredentialReferences } from "../lib/credentialReferences"
+import { cleanupUnusedCredentials } from "../lib/credentialVault"
 import { normalizeConnectUri } from "../lib/lancedbUri"
-import type { AuthDescriptor } from "../ipc/v1"
 import type { StoredProfile } from "../models/profile"
 import { createProfile, loadProfileState, saveProfileState } from "../stores/profiles"
 

@@ -1,9 +1,7 @@
 import type { AuthDescriptor } from "../ipc/v1"
 import { getCredential } from "./credentialVault"
 
-export async function resolveAuthDescriptor(
-	auth?: AuthDescriptor
-): Promise<AuthDescriptor> {
+export async function resolveAuthDescriptor(auth?: AuthDescriptor): Promise<AuthDescriptor> {
 	if (!auth || auth.type === "none") {
 		return { type: "none" }
 	}

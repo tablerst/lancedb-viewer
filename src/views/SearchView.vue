@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import type { DataTableColumns, SelectOption } from "naive-ui"
 import { computed, h, ref, watch } from "vue"
+import { useRoute, useRouter } from "vue-router"
 
 import { useWorkspace } from "../composables/workspaceContext"
 import type { SchemaDefinition } from "../ipc/v1"
+import {
+	getConnectionKind,
+	getConnectionKindLabel,
+	getConnectionKindTagType,
+} from "../lib/connectionKind"
 import { formatCellValue, normalizeRow } from "../lib/formatters"
 import {
 	combinedSearchV1,
@@ -14,18 +20,142 @@ import {
 } from "../lib/tauriClient"
 
 const {
-	activeTableName,
-	activeTableId,
-	schema,
+	profiles,
+	activeProfileId,
+	connectionStates,
+	connectProfile,
+	refreshTables,
+	openTable,
 	setStatus,
 	setError,
 	clearMessages,
 } = useWorkspace()
 
-const tableHint = computed(() => activeTableName.value ?? "尚未选择表")
-const hasActiveTable = computed(() => Boolean(activeTableId.value))
+const route = useRoute()
+const router = useRouter()
 
-const allFieldNames = computed(() => schema.value?.fields.map((field) => field.name) ?? [])
+const routeProfileId = computed(() => {
+	const raw = route.params.id
+	return typeof raw === "string" ? raw : null
+})
+
+const scopedProfileId = computed(() => routeProfileId.value ?? activeProfileId.value)
+const scopedProfile = computed(() => {
+	const id = scopedProfileId.value
+	if (!id) {
+		return null
+	}
+	return profiles.value.find((item) => item.id === id) ?? null
+})
+
+const scopedConnection = computed(() => {
+	const id = scopedProfileId.value
+	if (!id) {
+		return null
+	}
+	return connectionStates.value[id] ?? null
+})
+
+const scopedConnectionId = computed(() => scopedConnection.value?.connectionId.value ?? null)
+const scopedTables = computed(() => scopedConnection.value?.tables.value ?? [])
+const scopedActiveTableName = computed(() => scopedConnection.value?.activeTableName.value ?? null)
+const scopedActiveTableId = computed(() => scopedConnection.value?.activeTableId.value ?? null)
+const scopedSchema = computed(() => scopedConnection.value?.schema.value ?? null)
+const scopedIsConnecting = computed(() => scopedConnection.value?.isConnecting.value ?? false)
+const scopedIsRefreshing = computed(() => scopedConnection.value?.isRefreshing.value ?? false)
+const scopedIsOpening = computed(() => scopedConnection.value?.isOpening.value ?? false)
+
+const isLegacySearchRoute = computed(() => route.name === "search")
+
+const connectionKindLabel = computed(() => {
+	const profile = scopedProfile.value
+	if (!profile) {
+		return null
+	}
+	return getConnectionKindLabel(getConnectionKind(profile.uri))
+})
+
+const connectionKindTagType = computed(() => {
+	const profile = scopedProfile.value
+	if (!profile) {
+		return "default"
+	}
+	return getConnectionKindTagType(getConnectionKind(profile.uri))
+})
+
+const tableHint = computed(() => scopedActiveTableName.value ?? "尚未选择表")
+const hasActiveTable = computed(() => Boolean(scopedActiveTableId.value))
+
+const tableOptions = computed<SelectOption[]>(() =>
+	scopedTables.value.map((item) => ({ label: item.name, value: item.name }))
+)
+
+const selectedTableName = ref<string | null>(null)
+
+watch(
+	() => scopedActiveTableName.value,
+	(next) => {
+		if (!next) {
+			return
+		}
+		if (selectedTableName.value !== next) {
+			selectedTableName.value = next
+		}
+	},
+	{ immediate: true }
+)
+
+async function gotoExplorer() {
+	const id = scopedProfileId.value
+	await router.push(id ? `/connections/${id}` : "/")
+}
+
+async function gotoCredentials() {
+	const id = scopedProfileId.value
+	await router.push(id ? `/connections/${id}/credentials` : "/vault/credentials")
+}
+
+async function switchToConnectionSearch() {
+	const id = scopedProfileId.value
+	if (!id) {
+		return
+	}
+	await router.push(`/connections/${id}/search`)
+}
+
+async function connectCurrent() {
+	const id = scopedProfileId.value
+	if (!id) {
+		return
+	}
+	await connectProfile(id)
+}
+
+async function refreshCurrentTables() {
+	const id = scopedProfileId.value
+	if (!id) {
+		return
+	}
+	await refreshTables(id)
+}
+
+async function openSelectedTable() {
+	const id = scopedProfileId.value
+	const name = selectedTableName.value
+	if (!id || !name) {
+		setError("请先选择要打开的表")
+		return
+	}
+	if (!scopedConnectionId.value) {
+		setError("当前连接未连接")
+		return
+	}
+	clearMessages()
+	await openTable(id, name)
+	setStatus(`已打开表：${name}`)
+}
+
+const allFieldNames = computed(() => scopedSchema.value?.fields.map((field) => field.name) ?? [])
 const columnOptions = computed<SelectOption[]>(() =>
 	allFieldNames.value.map((name) => ({ label: name, value: name }))
 )
@@ -93,7 +223,7 @@ function compareValues(a: unknown, b: unknown) {
 }
 
 const resultColumns = computed<DataTableColumns<Record<string, unknown>>>(() => {
-	const fields = resultSchema.value?.fields ?? schema.value?.fields ?? []
+	const fields = resultSchema.value?.fields ?? scopedSchema.value?.fields ?? []
 	return fields.map((field) => ({
 		title: () => renderHeader(field.name),
 		key: field.name,
@@ -117,7 +247,11 @@ function resetResults() {
 	resultError.value = ""
 }
 
-watch(activeTableId, () => {
+watch(scopedActiveTableId, () => {
+	resetResults()
+})
+
+watch(scopedProfileId, () => {
 	resetResults()
 })
 
@@ -144,7 +278,7 @@ function parseCombinedVectorInput() {
 }
 
 async function runFilterQuery() {
-	const tableId = activeTableId.value
+	const tableId = scopedActiveTableId.value
 	if (!tableId || isSearching.value) {
 		return
 	}
@@ -179,7 +313,7 @@ async function runFilterQuery() {
 }
 
 async function runVectorQuery() {
-	const tableId = activeTableId.value
+	const tableId = scopedActiveTableId.value
 	if (!tableId || isSearching.value) {
 		return
 	}
@@ -223,7 +357,7 @@ async function runVectorQuery() {
 }
 
 async function runFtsQuery() {
-	const tableId = activeTableId.value
+	const tableId = scopedActiveTableId.value
 	if (!tableId || isSearching.value) {
 		return
 	}
@@ -260,7 +394,7 @@ async function runFtsQuery() {
 }
 
 async function runCombinedQuery() {
-	const tableId = activeTableId.value
+	const tableId = scopedActiveTableId.value
 	if (!tableId || isSearching.value) {
 		return
 	}
@@ -317,12 +451,152 @@ async function runCombinedQuery() {
 <template>
 	<div class="space-y-4">
 		<NCard size="small" title="检索工作台" class="shadow-sm">
-			<div class="text-xs text-slate-500">
-				当前表：{{ tableHint }}。请先在“资源浏览”中选择表。
+			<div class="space-y-2 text-xs text-slate-500">
+				<div class="flex flex-wrap items-start justify-between gap-2">
+					<div class="min-w-0 space-y-1">
+						<div class="flex items-center gap-2 text-slate-600">
+							<span class="font-medium">当前连接</span>
+							<template v-if="scopedProfile">
+								<span class="max-w-[240px] truncate">{{ scopedProfile.name }}</span>
+								<NTag
+									size="small"
+									:type="connectionKindTagType"
+								>
+									{{ connectionKindLabel ?? "Unknown" }}
+								</NTag>
+								<NTag v-if="scopedIsConnecting" size="small" type="warning">
+									连接中
+								</NTag>
+								<NTag v-else-if="scopedConnectionId" size="small" type="success">
+									已连接
+								</NTag>
+								<NTag v-else size="small" type="default">未连接</NTag>
+							</template>
+							<span v-else>尚未选择连接</span>
+						</div>
+						<div
+							v-if="scopedProfile"
+							class="max-w-[520px] truncate"
+							:title="scopedProfile.uri"
+						>
+							{{ scopedProfile.uri }}
+						</div>
+					</div>
+
+					<div class="flex shrink-0 flex-wrap gap-2">
+						<NButton size="small" secondary @click="gotoExplorer">资源浏览</NButton>
+						<NButton
+							size="small"
+							secondary
+							:disabled="!scopedProfileId"
+							@click="gotoCredentials"
+						>
+							凭证
+						</NButton>
+						<NButton
+							v-if="isLegacySearchRoute && scopedProfileId"
+							size="small"
+							quaternary
+							@click="switchToConnectionSearch"
+						>
+							使用连接级 URL
+						</NButton>
+					</div>
+				</div>
+
+				<div class="flex flex-wrap items-end justify-between gap-2">
+					<div class="flex min-w-[280px] flex-1 items-end gap-2">
+						<div class="flex-1">
+							<label class="text-xs text-slate-500">检索表</label>
+							<NSelect
+								v-model:value="selectedTableName"
+								:options="tableOptions"
+								filterable
+								clearable
+								placeholder="选择要检索的表"
+								size="small"
+								:disabled="!scopedConnectionId"
+								:loading="scopedIsRefreshing"
+							/>
+						</div>
+						<NButton
+							size="small"
+							type="primary"
+							:disabled="!scopedConnectionId || !selectedTableName"
+							:loading="scopedIsOpening"
+							@click="openSelectedTable"
+						>
+							打开
+						</NButton>
+					</div>
+
+					<div class="flex shrink-0 flex-wrap gap-2">
+						<NButton
+							size="small"
+							type="primary"
+							:disabled="!scopedProfileId || Boolean(scopedConnectionId)"
+							:loading="scopedIsConnecting"
+							@click="connectCurrent"
+						>
+							连接
+						</NButton>
+						<NButton
+							size="small"
+							secondary
+							:disabled="!scopedProfileId || !scopedConnectionId"
+							:loading="scopedIsRefreshing"
+							@click="refreshCurrentTables"
+						>
+							刷新表
+						</NButton>
+					</div>
+				</div>
+
+				<div class="text-slate-500">
+					当前表：{{ tableHint }}。
+					<span v-if="!hasActiveTable">请先选择并打开表。</span>
+				</div>
 			</div>
 		</NCard>
 
-		<NEmpty v-if="!hasActiveTable" description="请先选择表" />
+		<NEmpty
+			v-if="!scopedProfileId"
+			description="请先在左侧选择连接，再进行检索。"
+		>
+			<template #extra>
+				<NButton size="small" secondary @click="gotoExplorer">去资源浏览</NButton>
+			</template>
+		</NEmpty>
+		<NEmpty
+			v-else-if="!scopedConnectionId"
+			description="当前连接尚未连接。点击“连接”后再选择表。"
+		>
+			<template #extra>
+				<div class="flex flex-wrap justify-center gap-2">
+					<NButton
+						size="small"
+						type="primary"
+						:loading="scopedIsConnecting"
+						@click="connectCurrent"
+					>
+						连接
+					</NButton>
+					<NButton size="small" secondary @click="gotoCredentials">
+						检查凭证
+					</NButton>
+				</div>
+			</template>
+		</NEmpty>
+		<NEmpty
+			v-else-if="!hasActiveTable"
+			description="请选择要检索的表，点击“打开”后开始查询。"
+		>
+			<template #extra>
+				<NButton size="small" secondary @click="gotoExplorer">
+					在资源浏览中打开
+				</NButton>
+			</template>
+		</NEmpty>
 
 		<div v-else class="space-y-4">
 			<NTabs v-model:value="activeTab" type="line">

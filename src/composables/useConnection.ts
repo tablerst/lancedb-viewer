@@ -86,9 +86,7 @@ export function useConnection(
 	const isConnecting = computed(() => activeConnection.value?.isConnecting?.value ?? false)
 	const isRefreshing = computed(() => activeConnection.value?.isRefreshing?.value ?? false)
 	const isOpening = computed(() => activeConnection.value?.isOpening?.value ?? false)
-	const isDisconnecting = computed(
-		() => activeConnection.value?.isDisconnecting?.value ?? false
-	)
+	const isDisconnecting = computed(() => activeConnection.value?.isDisconnecting?.value ?? false)
 
 	function resetConnection(profileId: string) {
 		const state = getState(profileId)

@@ -6,9 +6,9 @@ import { FolderOpen } from "lucide-vue-next"
 import { computed, ref } from "vue"
 
 import type { AuthDescriptor } from "../ipc/v1"
-import { saveCredential } from "../lib/credentialVault"
 import type { ConnectionKind } from "../lib/connectionKind"
 import { getConnectionKind } from "../lib/connectionKind"
+import { saveCredential } from "../lib/credentialVault"
 import { normalizeConnectUri } from "../lib/lancedbUri"
 
 const createProfileEvent = "profiles:create"

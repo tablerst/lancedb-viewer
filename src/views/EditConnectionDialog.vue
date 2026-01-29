@@ -7,9 +7,9 @@ import { computed, onMounted, ref } from "vue"
 import { useRoute } from "vue-router"
 
 import type { AuthDescriptor } from "../ipc/v1"
-import { saveCredential } from "../lib/credentialVault"
 import type { ConnectionKind } from "../lib/connectionKind"
 import { getConnectionKind } from "../lib/connectionKind"
+import { saveCredential } from "../lib/credentialVault"
 import { normalizeConnectUri } from "../lib/lancedbUri"
 import { loadProfileState } from "../stores/profiles"
 

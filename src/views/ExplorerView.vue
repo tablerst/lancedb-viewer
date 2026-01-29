@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { LogicalPosition } from "@tauri-apps/api/dpi"
 import { Menu, MenuItem } from "@tauri-apps/api/menu"
-import { getCurrentWindow } from "@tauri-apps/api/window"
 import { confirm, open, save } from "@tauri-apps/plugin-dialog"
-import { NButton, NInput, NSpace, type DataTableColumns, type SelectOption } from "naive-ui"
-import { computed, h, ref, watch } from "vue"
+import { type DataTableColumns, NButton, NInput, NSpace, type SelectOption } from "naive-ui"
+import { computed, h, nextTick, ref, watch } from "vue"
+import { useRoute, useRouter } from "vue-router"
 import { useWorkspace } from "../composables/workspaceContext"
 import type {
 	DataFileFormatV1,
@@ -26,19 +27,19 @@ import {
 	createIndexV1,
 	createTableV1,
 	deleteRowsV1,
-	dropIndexV1,
 	dropColumnsV1,
+	dropIndexV1,
 	dropTableV1,
 	exportDataV1,
-	optimizeTableV1,
 	getTableVersionV1,
 	importDataV1,
 	listIndexesV1,
 	listVersionsV1,
+	optimizeTableV1,
 	renameTableV1,
 	scanV1,
-	updateRowsV1,
 	unwrapEnvelope,
+	updateRowsV1,
 	writeRowsV1,
 } from "../lib/tauriClient"
 
@@ -59,8 +60,11 @@ const {
 	clearMessages,
 } = useWorkspace()
 
+const route = useRoute()
+const router = useRouter()
+
 const openedTables = ref<TableInfo[]>([])
-const activeTableTab = ref<string | null>(null)
+const activeTableTab = ref<string>("")
 const columnFilters = ref<Record<string, string>>({})
 
 function renderHeader(title: string) {
@@ -140,6 +144,25 @@ const filterExpression = ref("")
 const activeInnerTab = ref("schema")
 
 const canManageTables = computed(() => Boolean(connectionId.value))
+
+const showCreateTableModal = ref(false)
+
+watch(
+	[() => route.query.action, () => canManageTables.value],
+	async ([rawAction, canManage]) => {
+		if (!canManage) {
+			return
+		}
+		const action = Array.isArray(rawAction) ? rawAction[0] : rawAction
+		if (action !== "create-table") {
+			return
+		}
+		await nextTick()
+		showCreateTableModal.value = true
+		await router.replace({ query: { ...route.query, action: undefined } })
+	},
+	{ immediate: true }
+)
 
 type FieldDraft = {
 	name: string
@@ -295,6 +318,20 @@ const isRenamingTable = ref(false)
 const renameTargetName = ref("")
 const renameSourceTable = ref<string | null>(null)
 const showRenameModal = ref(false)
+
+type ColumnOpsTab = "add" | "alter" | "drop"
+
+const showColumnOpsModal = ref(false)
+const activeColumnOpsTab = ref<ColumnOpsTab>("add")
+const isColumnOpsBusy = computed(
+	() => isAddingColumns.value || isAlteringColumns.value || isDroppingColumns.value
+)
+
+function openColumnOps(tab: ColumnOpsTab) {
+	activeColumnOpsTab.value = tab
+	showColumnOpsModal.value = true
+}
+
 const scanError = ref("")
 const dataRows = ref<unknown[]>([])
 const nextOffset = ref<number | null>(null)
@@ -523,10 +560,7 @@ async function showTableContextMenu(tableName: string, event: MouseEvent) {
 		],
 	})
 
-	await menu.popup({
-		window: getCurrentWindow(),
-		position: { x: event.clientX, y: event.clientY },
-	})
+	await menu.popup(new LogicalPosition(event.clientX, event.clientY))
 }
 
 function compareValues(a: unknown, b: unknown) {
@@ -569,14 +603,11 @@ const tableColumns = computed<DataTableColumns<Record<string, unknown>>>(() =>
 				h(
 					"span",
 					{
-						class: [
-							"table-filter-trigger",
-							active || show ? "text-blue-600" : "text-slate-400",
-						],
+						class: ["table-filter-trigger", active || show ? "text-blue-600" : "text-slate-400"],
 						title: "筛选",
 					},
 					"筛"
-					),
+				),
 			renderFilterMenu: ({ hide }) =>
 				h("div", { class: "table-filter-menu" }, [
 					h(NInput, {
@@ -584,8 +615,7 @@ const tableColumns = computed<DataTableColumns<Record<string, unknown>>>(() =>
 						placeholder: `筛选 ${name}`,
 						clearable: true,
 						size: "small",
-						onUpdateValue: (nextValue) =>
-							setColumnFilter(name, String(nextValue ?? "")),
+						onUpdateValue: (nextValue) => setColumnFilter(name, String(nextValue ?? "")),
 					}),
 					h(
 						NSpace,
@@ -614,7 +644,7 @@ const tableColumns = computed<DataTableColumns<Record<string, unknown>>>(() =>
 								),
 							],
 						}
-					)
+					),
 				]),
 		}
 	})
@@ -633,7 +663,7 @@ watch(schema, () => {
 
 watch(activeProfileId, () => {
 	openedTables.value = []
-	activeTableTab.value = null
+	activeTableTab.value = ""
 	createTableName.value = ""
 	createFields.value = [createFieldDraft()]
 	writeRowsText.value = "[]"
@@ -859,14 +889,13 @@ async function submitCreateTable() {
 	try {
 		isCreatingTable.value = true
 		clearMessages()
-		unwrapEnvelope(
-			await createTableV1(currentConnectionId, tableName, { fields })
-		)
+		unwrapEnvelope(await createTableV1(currentConnectionId, tableName, { fields }))
 		setStatus(`已创建表 ${tableName}`)
 		await refreshTables(profileId)
 		await openTable(profileId, tableName)
 		createTableName.value = ""
 		createFields.value = [createFieldDraft()]
+		showCreateTableModal.value = false
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "创建表失败"
 		setError(message)
@@ -926,9 +955,8 @@ async function submitAlterColumns() {
 			const rename = draft.rename.trim()
 			const nullable = resolveNullable(draft.nullable)
 			const dataType = draft.dataType === "keep" ? undefined : draft.dataType
-			const vectorLength = dataType === "fixed_size_list_float32"
-				? Number(draft.vectorLength ?? 0)
-				: undefined
+			const vectorLength =
+				dataType === "fixed_size_list_float32" ? Number(draft.vectorLength ?? 0) : undefined
 			if (!rename && nullable === undefined && !dataType) {
 				return null
 			}
@@ -1068,9 +1096,7 @@ async function submitCreateIndex() {
 	if (!tableId || isCreatingIndex.value) {
 		return
 	}
-	const columns = indexColumnsToCreate.value
-		.map((column) => column.trim())
-		.filter(Boolean)
+	const columns = indexColumnsToCreate.value.map((column) => column.trim()).filter(Boolean)
 	if (!columns.length) {
 		setError("请选择索引列")
 		return
@@ -1147,9 +1173,7 @@ async function submitCheckoutVersion() {
 	try {
 		isCheckingOutVersion.value = true
 		clearMessages()
-		const response = unwrapEnvelope(
-			await checkoutTableVersionV1({ tableId, version })
-		)
+		const response = unwrapEnvelope(await checkoutTableVersionV1({ tableId, version }))
 		currentVersion.value = response.version
 		setStatus(`已切换到版本 ${response.version}`)
 		await refreshSchema(profileId)
@@ -1594,69 +1618,11 @@ function handlePageSizeChange(nextSize: number) {
 
 <template>
 	<div class="space-y-4">
-		<NCard v-if="canManageTables" size="small" title="创建表" class="shadow-sm">
-			<div class="grid gap-3 xl:grid-cols-6">
-				<div class="xl:col-span-2">
-					<label class="text-xs text-slate-500">表名</label>
-					<NInput v-model:value="createTableName" placeholder="new_table" />
-				</div>
-				<div class="xl:col-span-4 flex items-end justify-end gap-2">
-					<NButton
-						secondary
-						:disabled="isCreatingTable"
-						@click="addCreateField"
-					>
-						添加字段
-					</NButton>
-					<NButton
-						type="primary"
-						:loading="isCreatingTable"
-						@click="submitCreateTable"
-					>
-						创建表
-					</NButton>
-				</div>
-			</div>
-			<div class="mt-3 space-y-2">
-				<div
-					v-for="(field, index) in createFields"
-					:key="`create-${index}`"
-					class="grid gap-2 rounded-md border border-slate-100 bg-slate-50/60 p-2 md:grid-cols-12"
-				>
-					<NInput
-						v-model:value="field.name"
-						placeholder="字段名"
-						class="md:col-span-4"
-					/>
-					<NSelect
-						v-model:value="field.dataType"
-						:options="fieldTypeOptions"
-						class="md:col-span-4"
-					/>
-					<NCheckbox v-model:checked="field.nullable" class="md:col-span-2">
-						可为空
-					</NCheckbox>
-					<NInputNumber
-						v-if="isVectorType(field.dataType)"
-						v-model:value="field.vectorLength"
-						:min="1"
-						placeholder="维度"
-						class="md:col-span-2"
-					/>
-					<NButton
-						v-if="createFields.length > 1"
-						quaternary
-						class="md:col-span-2"
-						@click="removeCreateField(index)"
-					>
-						移除
-					</NButton>
-				</div>
-			</div>
-		</NCard>
-
-		<NEmpty v-else description="请先连接数据库" />
-		<NEmpty v-if="canManageTables && !hasOpenTables" description="选择表以查看详情" />
+		<NEmpty v-if="!canManageTables" description="请先连接数据库" />
+		<NEmpty
+			v-else-if="!hasOpenTables"
+			description="选择表以查看详情（右键连接可创建表）"
+		/>
 		<NTabs v-else-if="hasOpenTables" v-model:value="activeTableTab" type="line">
 			<NTabPane
 				v-for="table in openedTables"
@@ -1674,153 +1640,21 @@ function handlePageSizeChange(nextSize: number) {
 								:data="schemaData"
 								:bordered="false"
 							/>
-							<div class="mt-4 space-y-4">
-								<NCard size="small" title="新增列" class="shadow-sm">
-									<div class="space-y-2">
-										<div
-											v-for="(field, index) in addColumnFields"
-											:key="`add-${index}`"
-											class="grid gap-2 rounded-md border border-slate-100 bg-slate-50/60 p-2 md:grid-cols-12"
-										>
-											<NInput
-												v-model:value="field.name"
-												placeholder="字段名"
-												class="md:col-span-4"
-											/>
-											<NSelect
-												v-model:value="field.dataType"
-												:options="fieldTypeOptions"
-												class="md:col-span-4"
-											/>
-											<NCheckbox v-model:checked="field.nullable" class="md:col-span-2">
-												可为空
-											</NCheckbox>
-											<NInputNumber
-												v-if="isVectorType(field.dataType)"
-												v-model:value="field.vectorLength"
-												:min="1"
-												placeholder="维度"
-												class="md:col-span-2"
-											/>
-											<NButton
-												v-if="addColumnFields.length > 1"
-												quaternary
-												class="md:col-span-2"
-												@click="removeColumnField(index)"
-											>
-												移除
-											</NButton>
-										</div>
-										<div class="flex items-center justify-end gap-2">
-											<NButton
-												secondary
-												:disabled="isAddingColumns"
-												@click="addColumnField"
-											>
-												添加列
-											</NButton>
-											<NButton
-												type="primary"
-												:loading="isAddingColumns"
-												@click="submitAddColumns"
-											>
-												提交新增
-											</NButton>
-										</div>
-									</div>
-								</NCard>
-
-								<NCard size="small" title="修改列" class="shadow-sm">
-									<div class="space-y-2">
-										<div
-											v-for="(draft, index) in alterColumns"
-											:key="`alter-${index}`"
-											class="grid gap-2 rounded-md border border-slate-100 bg-slate-50/60 p-2 md:grid-cols-12"
-										>
-											<NInput
-												v-model:value="draft.path"
-												placeholder="列名路径"
-												class="md:col-span-3"
-											/>
-											<NInput
-												v-model:value="draft.rename"
-												placeholder="新名称"
-												class="md:col-span-3"
-											/>
-											<NSelect
-												v-model:value="draft.nullable"
-												:options="nullableOptions"
-												class="md:col-span-2"
-											/>
-											<NSelect
-												v-model:value="draft.dataType"
-												:options="alterTypeOptions"
-												class="md:col-span-2"
-											/>
-											<NInputNumber
-												v-if="isVectorType(draft.dataType)"
-												v-model:value="draft.vectorLength"
-												:min="1"
-												placeholder="维度"
-												class="md:col-span-1"
-											/>
-											<NButton
-												v-if="alterColumns.length > 1"
-												quaternary
-												class="md:col-span-1"
-												@click="removeAlteration(index)"
-											>
-												移除
-											</NButton>
-										</div>
-										<div class="flex items-center justify-end gap-2">
-											<NButton
-												secondary
-												:disabled="isAlteringColumns"
-												@click="addAlteration"
-											>
-												添加修改
-											</NButton>
-											<NButton
-												type="primary"
-												:loading="isAlteringColumns"
-												@click="submitAlterColumns"
-											>
-												提交修改
-											</NButton>
-										</div>
-									</div>
-								</NCard>
-
-								<NCard size="small" title="删除列" class="shadow-sm">
-									<div class="space-y-2">
-										<NSelect
-											v-model:value="dropColumnNames"
-											:options="columnOptions"
-											multiple
-											clearable
-											placeholder="选择要删除的列"
-										/>
-										<div class="flex justify-end">
-											<NPopconfirm
-												positive-text="删除"
-												negative-text="取消"
-												@positive-click="submitDropColumns"
-											>
-												<template #trigger>
-													<NButton
-														type="error"
-														secondary
-														:loading="isDroppingColumns"
-													>
-														删除列
-													</NButton>
-												</template>
-												确定删除选中的列吗？
-											</NPopconfirm>
-										</div>
-									</div>
-								</NCard>
+							<div class="mt-4 flex flex-wrap items-center justify-end gap-2">
+								<NButton secondary :disabled="!hasActiveTable" @click="openColumnOps('add')">
+									新增列…
+								</NButton>
+								<NButton secondary :disabled="!hasActiveTable" @click="openColumnOps('alter')">
+									修改列…
+								</NButton>
+								<NButton
+									type="error"
+									secondary
+									:disabled="!hasActiveTable"
+									@click="openColumnOps('drop')"
+								>
+									删除列…
+								</NButton>
 							</div>
 						</NTabPane>
 						<NTabPane name="data" tab="数据浏览">
@@ -2509,13 +2343,14 @@ function handlePageSizeChange(nextSize: number) {
 			</NTabPane>
 		</NTabs>
 
-		<NModal v-model:show="showRenameModal">
+		<NModal v-model:show="showRenameModal" :mask-closable="!isRenamingTable" :close-on-esc="!isRenamingTable">
 			<NCard
 				size="small"
 				title="重命名表"
 				class="w-[420px]"
 				:closable="!isRenamingTable"
 				:bordered="false"
+				@close="showRenameModal = false"
 			>
 				<div class="space-y-3">
 					<div class="text-xs text-slate-500">
@@ -2546,6 +2381,257 @@ function handlePageSizeChange(nextSize: number) {
 						仅 LanceDB Cloud 支持重命名；本地连接将提示不支持。
 					</div>
 				</div>
+			</NCard>
+		</NModal>
+
+		<NModal
+			v-model:show="showCreateTableModal"
+			:mask-closable="!isCreatingTable"
+			:close-on-esc="!isCreatingTable"
+		>
+			<NCard
+				size="small"
+				title="创建表"
+				class="w-[760px] max-w-[calc(100vw-40px)]"
+				:closable="!isCreatingTable"
+				:bordered="false"
+				@close="showCreateTableModal = false"
+			>
+				<div class="grid gap-3 xl:grid-cols-6">
+					<div class="xl:col-span-2">
+						<label class="text-xs text-slate-500">表名</label>
+						<NInput v-model:value="createTableName" placeholder="new_table" />
+					</div>
+					<div class="xl:col-span-4 flex items-end justify-end gap-2">
+						<NButton
+							quaternary
+							:disabled="isCreatingTable"
+							@click="showCreateTableModal = false"
+						>
+							取消
+						</NButton>
+						<NButton
+							secondary
+							:disabled="isCreatingTable"
+							@click="addCreateField"
+						>
+							添加字段
+						</NButton>
+						<NButton
+							type="primary"
+							:loading="isCreatingTable"
+							@click="submitCreateTable"
+						>
+							创建表
+						</NButton>
+					</div>
+				</div>
+
+				<div class="mt-3 space-y-2">
+					<div
+						v-for="(field, index) in createFields"
+						:key="`create-${index}`"
+						class="grid gap-2 rounded-md border border-slate-100 bg-slate-50/60 p-2 md:grid-cols-12"
+					>
+						<NInput
+							v-model:value="field.name"
+							placeholder="字段名"
+							class="md:col-span-4"
+						/>
+						<NSelect
+							v-model:value="field.dataType"
+							:options="fieldTypeOptions"
+							class="md:col-span-4"
+						/>
+						<NCheckbox v-model:checked="field.nullable" class="md:col-span-2">
+							可为空
+						</NCheckbox>
+						<NInputNumber
+							v-if="isVectorType(field.dataType)"
+							v-model:value="field.vectorLength"
+							:min="1"
+							placeholder="维度"
+							class="md:col-span-2"
+						/>
+						<NButton
+							v-if="createFields.length > 1"
+							quaternary
+							class="md:col-span-2"
+							:disabled="isCreatingTable"
+							@click="removeCreateField(index)"
+						>
+							移除
+						</NButton>
+					</div>
+				</div>
+			</NCard>
+		</NModal>
+
+		<NModal
+			v-model:show="showColumnOpsModal"
+			:mask-closable="!isColumnOpsBusy"
+			:close-on-esc="!isColumnOpsBusy"
+		>
+			<NCard
+				size="small"
+				title="列操作"
+				class="w-[860px] max-w-[calc(100vw-40px)]"
+				:closable="!isColumnOpsBusy"
+				:bordered="false"
+				@close="showColumnOpsModal = false"
+			>
+				<NTabs v-model:value="activeColumnOpsTab" type="line">
+					<NTabPane name="add" tab="新增列">
+						<div class="space-y-2">
+							<div
+								v-for="(field, index) in addColumnFields"
+								:key="`add-${index}`"
+								class="grid gap-2 rounded-md border border-slate-100 bg-slate-50/60 p-2 md:grid-cols-12"
+							>
+								<NInput
+									v-model:value="field.name"
+									placeholder="字段名"
+									class="md:col-span-4"
+									:disabled="isAddingColumns"
+								/>
+								<NSelect
+									v-model:value="field.dataType"
+									:options="fieldTypeOptions"
+									class="md:col-span-4"
+									:disabled="isAddingColumns"
+								/>
+								<NCheckbox
+									v-model:checked="field.nullable"
+									class="md:col-span-2"
+									:disabled="isAddingColumns"
+								>
+									可为空
+								</NCheckbox>
+								<NInputNumber
+									v-if="isVectorType(field.dataType)"
+									v-model:value="field.vectorLength"
+									:min="1"
+									placeholder="维度"
+									class="md:col-span-2"
+									:disabled="isAddingColumns"
+								/>
+								<NButton
+									v-if="addColumnFields.length > 1"
+									quaternary
+									class="md:col-span-2"
+									:disabled="isAddingColumns"
+									@click="removeColumnField(index)"
+								>
+									移除
+								</NButton>
+							</div>
+							<div class="flex items-center justify-end gap-2">
+								<NButton secondary :disabled="isAddingColumns" @click="addColumnField">
+									添加列
+								</NButton>
+								<NButton type="primary" :loading="isAddingColumns" @click="submitAddColumns">
+									提交新增
+								</NButton>
+							</div>
+						</div>
+					</NTabPane>
+
+					<NTabPane name="alter" tab="修改列">
+						<div class="space-y-2">
+							<div
+								v-for="(draft, index) in alterColumns"
+								:key="`alter-${index}`"
+								class="grid gap-2 rounded-md border border-slate-100 bg-slate-50/60 p-2 md:grid-cols-12"
+							>
+								<NInput
+									v-model:value="draft.path"
+									placeholder="列名路径"
+									class="md:col-span-3"
+									:disabled="isAlteringColumns"
+								/>
+								<NInput
+									v-model:value="draft.rename"
+									placeholder="新名称"
+									class="md:col-span-3"
+									:disabled="isAlteringColumns"
+								/>
+								<NSelect
+									v-model:value="draft.nullable"
+									:options="nullableOptions"
+									class="md:col-span-2"
+									:disabled="isAlteringColumns"
+								/>
+								<NSelect
+									v-model:value="draft.dataType"
+									:options="alterTypeOptions"
+									class="md:col-span-2"
+									:disabled="isAlteringColumns"
+								/>
+								<NInputNumber
+									v-if="isVectorType(draft.dataType)"
+									v-model:value="draft.vectorLength"
+									:min="1"
+									placeholder="维度"
+									class="md:col-span-1"
+									:disabled="isAlteringColumns"
+								/>
+								<NButton
+									v-if="alterColumns.length > 1"
+									quaternary
+									class="md:col-span-1"
+									:disabled="isAlteringColumns"
+									@click="removeAlteration(index)"
+								>
+									移除
+								</NButton>
+							</div>
+							<div class="flex items-center justify-end gap-2">
+								<NButton secondary :disabled="isAlteringColumns" @click="addAlteration">
+									添加修改
+								</NButton>
+								<NButton
+									type="primary"
+									:loading="isAlteringColumns"
+									@click="submitAlterColumns"
+								>
+									提交修改
+								</NButton>
+							</div>
+						</div>
+					</NTabPane>
+
+					<NTabPane name="drop" tab="删除列">
+						<div class="space-y-2">
+							<NSelect
+								v-model:value="dropColumnNames"
+								:options="columnOptions"
+								multiple
+								clearable
+								placeholder="选择要删除的列"
+								:disabled="isDroppingColumns"
+							/>
+							<div class="flex justify-end">
+								<NPopconfirm
+									positive-text="删除"
+									negative-text="取消"
+									@positive-click="submitDropColumns"
+								>
+									<template #trigger>
+										<NButton
+											type="error"
+											secondary
+											:loading="isDroppingColumns"
+											:disabled="isDroppingColumns"
+										>
+											删除列
+										</NButton>
+									</template>
+									确定删除选中的列吗？
+								</NPopconfirm>
+							</div>
+						</div>
+					</NTabPane>
+				</NTabs>
 			</NCard>
 		</NModal>
 	</div>

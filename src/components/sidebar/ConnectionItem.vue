@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, Pencil, Plug, RefreshCcw, Table, Trash2 } from "lucide-vue-next"
+import { ChevronDown, ChevronRight, MoreHorizontal, Table } from "lucide-vue-next"
 import { computed, ref, watch } from "vue"
 
 import type { ConnectionState } from "../../composables/useConnection"
-import { formatTimestamp } from "../../lib/formatters"
 import {
 	getConnectionKind,
 	getConnectionKindLabel,
 	getConnectionKindTagType,
 } from "../../lib/connectionKind"
+import { formatTimestamp } from "../../lib/formatters"
 import type { StoredProfile } from "../../models/profile"
 
 const props = defineProps<{
@@ -20,18 +20,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	(e: "select"): void
-	(e: "connect"): void
-	(e: "disconnect"): void
-	(e: "refresh"): void
 	(e: "open-table", name: string): void
-	(e: "edit"): void
-	(e: "delete"): void
+	(e: "open-menu", event: MouseEvent): void
 }>()
 
 const isConnected = computed(() => Boolean(props.state?.connectionId?.value))
 const isConnecting = computed(() => props.state?.isConnecting?.value ?? false)
 const isDisconnecting = computed(() => props.state?.isDisconnecting?.value ?? false)
-const isRefreshing = computed(() => props.state?.isRefreshing?.value ?? false)
 const tables = computed(() => props.state?.tables?.value ?? [])
 const activeTableName = computed(() => props.state?.activeTableName?.value ?? null)
 const kind = computed(() => getConnectionKind(props.profile.uri))
@@ -77,7 +72,6 @@ const showCollapsedStatus = computed(
 	() => isConnecting.value || isDisconnecting.value || !isConnected.value
 )
 const lastConnectedLabel = computed(() => formatTimestamp(props.profile.lastConnectedAt))
-const connectLabel = computed(() => (isConnected.value ? "重连" : "连接"))
 const collapsedTitle = computed(() => {
 	if (isConnecting.value || !isConnected.value) {
 		return `${props.profile.name} · ${statusText.value} · ${kindLabel.value}`
@@ -112,16 +106,26 @@ function toggleExpanded() {
 	}
 	isExpanded.value = !isExpanded.value
 }
+
+function openMenu(event: MouseEvent) {
+	emit("open-menu", event)
+}
+
+function handleContextMenu(event: MouseEvent) {
+	event.preventDefault()
+	openMenu(event)
+}
 </script>
 
 <template>
 	<NCard
 		size="small"
-		class="shadow-sm transition-shadow hover:shadow-md"
+		class="group shadow-sm transition-shadow hover:shadow-md"
 		:class="[
 			selected ? 'border-sky-200 ring-1 ring-sky-200' : '',
 			collapsed ? 'min-h-[104px] bg-slate-50/40 hover:bg-slate-50/70' : '',
 		]"
+		@contextmenu="handleContextMenu"
 	>
 		<div v-if="collapsed" class="flex flex-col items-center gap-2">
 			<button
@@ -167,64 +171,26 @@ function toggleExpanded() {
 						</div>
 					</div>
 				</button>
-				<div class="flex shrink-0 items-start">
+				<div class="flex shrink-0 items-center gap-1">
+					<NButton
+						size="tiny"
+						quaternary
+						circle
+						class="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+						aria-label="更多操作"
+						title="更多操作"
+						@click.stop="openMenu"
+					>
+						<MoreHorizontal class="h-4 w-4" />
+					</NButton>
 					<NTag size="small" :type="tagType">{{ kindLabel }}</NTag>
 				</div>
 			</div>
 
 			<div class="mt-1 text-[11px] text-slate-500">最近连接：{{ lastConnectedLabel }}</div>
 
-			<div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-				<div class="flex flex-wrap items-center gap-2">
-					<NButton
-						size="tiny"
-						type="primary"
-						:loading="isConnecting"
-						:disabled="isConnecting || isDisconnecting"
-						@click.stop="emit('connect')"
-					>
-						<Plug class="h-3 w-3" />
-						<span class="ml-1">{{ connectLabel }}</span>
-					</NButton>
-					<NButton
-						size="tiny"
-						type="warning"
-						:loading="isDisconnecting"
-						:disabled="!isConnected || isDisconnecting"
-						@click.stop="emit('disconnect')"
-					>
-						<Plug class="h-3 w-3" />
-						<span class="ml-1">断开</span>
-					</NButton>
-					<NButton
-						size="tiny"
-						quaternary
-						:disabled="!isConnected || isRefreshing || isDisconnecting"
-						@click.stop="emit('refresh')"
-					>
-						<RefreshCcw class="h-3 w-3" />
-						<span class="ml-1">刷新</span>
-					</NButton>
-				</div>
-				<div class="flex items-center gap-1">
-					<NButton size="tiny" quaternary @click.stop="emit('edit')">
-						<Pencil class="h-3 w-3" />
-						<span class="ml-1">编辑</span>
-					</NButton>
-					<NPopconfirm
-						positive-text="删除"
-						negative-text="取消"
-						@positive-click="emit('delete')"
-					>
-						<template #trigger>
-							<NButton size="tiny" quaternary type="error" @click.stop="() => {}">
-								<Trash2 class="h-3 w-3" />
-								<span class="ml-1">删除</span>
-							</NButton>
-						</template>
-						确定删除该连接档案吗？该操作不可撤销。
-					</NPopconfirm>
-				</div>
+			<div class="mt-2 text-[11px] text-slate-400">
+				右键该连接以查看更多操作
 			</div>
 
 			<div class="mt-3">
