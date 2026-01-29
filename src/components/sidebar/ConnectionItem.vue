@@ -115,17 +115,23 @@ function handleContextMenu(event: MouseEvent) {
 <template>
 	<NCard
 		size="small"
-		class="group shadow-sm transition-shadow hover:shadow-md"
+		class="group transform-gpu will-change-transform transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out focus-within:border-sky-200"
 		:class="[
-			selected ? 'border-sky-200 ring-1 ring-sky-200' : '',
-			collapsed ? 'min-h-[84px] bg-slate-50/40 hover:bg-slate-50/70' : '',
+			selected
+				? 'border-sky-200 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_6px_18px_rgba(14,165,233,0.10)] hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_2px_6px_rgba(15,23,42,0.08),0_12px_26px_rgba(14,165,233,0.16)]'
+				: 'hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md',
+			collapsed
+				? selected
+					? 'min-h-[84px] bg-sky-50/40 hover:bg-sky-50/60'
+					: 'min-h-[84px] bg-slate-50/40 hover:bg-slate-50/70'
+				: '',
 		]"
 		:content-style="collapsed ? { padding: '10px 8px' } : undefined"
 		@contextmenu="handleContextMenu"
 	>
 		<div v-if="collapsed" class="flex flex-col items-center gap-1.5">
 			<button
-				class="group flex w-full flex-col items-center gap-1 rounded-md px-2 py-1.5 text-center transition hover:bg-slate-100/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
+				class="group flex w-full flex-col items-center gap-1 rounded-md px-2 py-1.5 text-center transition hover:bg-slate-100/70 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
 				:title="collapsedTitle"
 				@click="emit('select')"
 			>
@@ -153,7 +159,10 @@ function handleContextMenu(event: MouseEvent) {
 
 		<div v-else>
 			<div class="flex items-start justify-between gap-3">
-				<button class="flex min-w-0 flex-1 text-left" @click="emit('select')">
+				<button
+					class="flex min-w-0 flex-1 rounded-md text-left focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+					@click="emit('select')"
+				>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-center gap-2">
 							<span class="h-2 w-2 rounded-full" :class="statusDotClass" />
@@ -187,9 +196,7 @@ function handleContextMenu(event: MouseEvent) {
 
 			<div class="mt-1 text-[11px] text-slate-500">最近连接：{{ lastConnectedLabel }}</div>
 
-			<div class="mt-2 text-[11px] text-slate-400">
-				右键该连接以查看更多操作
-			</div>
+			<div class="mt-2 text-[11px] text-slate-400">右键该连接以查看更多操作</div>
 
 			<div class="mt-3">
 				<div class="flex items-center justify-between text-xs text-slate-500">

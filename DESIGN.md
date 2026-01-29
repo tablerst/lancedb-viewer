@@ -64,7 +64,9 @@ Naive UI 主题覆盖在 `src/theme/naiveTheme.ts`。
 
 - 全局圆角：`10px`
 - 卡片：白底 + 轻边框（`#e2e8f0`）+ 圆角 `12px`
-- 阴影：轻量（`shadow-sm`），避免重阴影造成“浮夸”
+- 阴影：默认尽量克制（可无阴影）；仅在 **hover/selected** 等需要强调层级时使用轻量阴影
+  - 选中态允许加入“主题色微光”（glow shadow）以表达悬浮
+  - 避免在同一元素上叠加 `ring-*` 与 `shadow-*`（`ring` 基于 box-shadow，易在圆角与抗锯齿处产生混色/脏边）
 
 ### 3.3 字体与排版
 
@@ -132,7 +134,21 @@ Sidebar 由上到下：
 
 - 任何“连接/刷新/打开表”的动作都必须 **先选中该连接**，确保右侧正文同步。
 
-### 5.3 表列表（树形/展开）与虚拟化
+### 5.3 视觉状态（默认 / Hover / Selected / Focus）
+
+- 默认（未选中、未 hover）：卡片保持干净，仅展示边框与内容，避免常驻“边缘发色”
+- Hover：提供轻量阴影（例如 `shadow-sm`）与轻微边框加深，提示可交互
+- Selected（选中）：必须具备清晰的“抬起/悬浮”感
+  - 使用更明显的 elevation 阴影 + 主题色微光（glow shadow）
+  - 配合主题色边框（例如 `border-sky-200`）作为选中锚点
+  - 不使用常驻外圈 `ring-*` 来表达选中（避免与阴影叠加导致的混色/杂边）
+- Hover on Selected：选中卡片在 hover 时也应提供额外反馈
+  - 建议使用轻微上浮位移（例如 `hover:-translate-y-0.5`）+ 更强阴影
+  - 过渡需包含 `transform` 与 `box-shadow`（并考虑 `prefers-reduced-motion`）
+- Focus（键盘可访问性）：卡片内部的主要按钮应使用 `focus-visible:outline-*` 统一焦点样式
+  - 禁用浏览器默认 outline（避免出现“奇怪蓝边”伪装成卡片边缘）
+
+### 5.4 表列表（树形/展开）与虚拟化
 
 - 当前为“表列表”最小形态（后续可扩展为树形）
 - 展开高度：最多 `200px`，内部使用 `NVirtualList`（itemSize `32px`）
