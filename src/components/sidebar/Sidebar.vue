@@ -78,7 +78,7 @@ const filterKind = ref<ProfileFilterKind>("all")
 
 const expandedWidth = "320px"
 const collapsedWidth = "72px"
-const collapsedItemSize = 96
+const collapsedItemSize = 68
 
 const filteredProfiles = computed(() => {
 	if (filterKind.value === "all") {

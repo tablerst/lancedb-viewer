@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Database, Key, LayoutGrid, Search, Settings } from "lucide-vue-next"
+import { Database, Key, LayoutGrid, Moon, Search, Settings, Sun } from "lucide-vue-next"
 import { computed } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
+import { useTheme } from "../../composables/useTheme"
 import { useWorkspace } from "../../composables/workspaceContext"
 
 type NavKey = "resources" | "search" | "vault" | "capabilities"
@@ -18,6 +19,7 @@ const route = useRoute()
 const router = useRouter()
 
 const { activeProfileId } = useWorkspace()
+const { isDark, toggle: toggleTheme } = useTheme()
 
 const mainItems = computed<NavItem[]>(() => {
 	const activeId = activeProfileId.value
@@ -46,7 +48,7 @@ const mainItems = computed<NavItem[]>(() => {
 const bottomItems = computed<NavItem[]>(() => [
 	{
 		key: "capabilities",
-		label: "能力",
+		label: "设置",
 		icon: Settings,
 		to: "/capabilities",
 	},
@@ -80,13 +82,13 @@ function navigate(to: string) {
 </script>
 
 <template>
-	<aside class="flex h-full w-16 shrink-0 flex-col border-r border-slate-200 bg-white">
-		<div class="flex items-center justify-center px-2 py-3">
+	<aside class="flex h-full w-12 shrink-0 flex-col border-r border-slate-200 bg-white">
+		<div class="flex items-center justify-center px-1.5 py-3">
 			<div
-				class="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500 text-white"
+				class="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500 text-white"
 				title="LanceDB Studio"
 			>
-				<Database class="h-4 w-4" />
+				<Database class="h-3.5 w-3.5" />
 			</div>
 		</div>
 
@@ -108,6 +110,15 @@ function navigate(to: string) {
 		</nav>
 
 		<div class="flex flex-col items-center gap-0.5 px-1 pb-3">
+			<button
+				class="flex w-full flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] leading-tight text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+				:title="isDark ? '切换到浅色模式' : '切换到深色模式'"
+				@click="toggleTheme"
+			>
+				<Sun v-if="isDark" class="h-4 w-4" />
+				<Moon v-else class="h-4 w-4" />
+				<span>{{ isDark ? "浅色" : "深色" }}</span>
+			</button>
 			<button
 				v-for="item in bottomItems"
 				:key="item.key"

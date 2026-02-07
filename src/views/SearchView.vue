@@ -4,6 +4,7 @@ import type { DataTableColumns, SelectOption } from "naive-ui"
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 
+import DataResultTable from "../components/DataResultTable.vue"
 import { useWorkspace } from "../composables/workspaceContext"
 import type { SchemaDefinition } from "../ipc/v1"
 import {
@@ -11,7 +12,7 @@ import {
 	getConnectionKindLabel,
 	getConnectionKindTagType,
 } from "../lib/connectionKind"
-import { normalizeRow, renderCellValue } from "../lib/formatters"
+import { renderCellValue } from "../lib/formatters"
 import {
 	combinedSearchV1,
 	ftsSearchV1,
@@ -147,13 +148,6 @@ const resultColumns = computed<DataTableColumns<Record<string, unknown>>>(() => 
 		render: (row) => renderCellValue(row[field.name]),
 	}))
 })
-
-const resultTableData = computed(() =>
-	resultRows.value.map((row, index) => ({
-		__rowId: `${index}`,
-		...normalizeRow(row),
-	}))
-)
 
 function resetResults() {
 	resultRows.value = []
@@ -695,38 +689,12 @@ async function runCombinedQuery() {
 					<span>返回行数：{{ resultRows.length }}</span>
 					<span v-if="resultNextOffset !== null">nextOffset: {{ resultNextOffset }}</span>
 				</div>
-				<div v-if="isSearching && !resultTableData.length" class="space-y-2 py-4">
-					<NSkeleton text :repeat="6" class="w-full" />
-				</div>
-				<NDataTable
-					v-else
-					class="data-table"
-					size="small"
+				<DataResultTable
 					:columns="resultColumns"
-					:data="resultTableData"
-					:bordered="false"
+					:data="resultRows"
 					:loading="isSearching"
-					:row-key="(row) => row.__rowId"
 				/>
 			</NCard>
 		</div>
 	</div>
 </template>
-
-<style scoped>
-.data-table :deep(.n-data-table-th),
-.data-table :deep(.n-data-table-td) {
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.data-table :deep(.table-header-ellipsis) {
-	display: inline-block;
-	max-width: 100%;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	vertical-align: bottom;
-}
-</style>

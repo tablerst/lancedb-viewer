@@ -2,37 +2,25 @@
 import { LogicalPosition } from "@tauri-apps/api/dpi"
 import { Menu, MenuItem } from "@tauri-apps/api/menu"
 import { confirm } from "@tauri-apps/plugin-dialog"
-import {
-	ArrowLeftRight,
-	ChevronRight,
-	Database,
-	History,
-	ListTree,
-	PenLine,
-	Table2,
-	TableProperties,
-	Wrench,
-} from "lucide-vue-next"
+import { ChevronRight, Database, History, ListTree, Table2, TableProperties } from "lucide-vue-next"
 import { type Component, computed, h, nextTick, provide, readonly, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
-import type { SchemaFieldInput } from "../../ipc/v1"
-import { createTableV1, dropTableV1, renameTableV1, unwrapEnvelope } from "../../lib/tauriClient"
-import DataBrowseTab from "./DataBrowseTab.vue"
-import DataWriteTab from "./DataWriteTab.vue"
 import {
-	createFieldDraft,
-	DATA_REFRESH_KEY,
-	type FieldDraft,
-	fieldTypeOptions,
-	isVectorType,
-	TRIGGER_DATA_REFRESH_KEY,
-	toFieldInput,
-} from "./explorerShared"
-import ImportExportTab from "./ImportExportTab.vue"
+	dropTableV1,
+	getTableVersionV1,
+	listIndexesV1,
+	unwrapEnvelope,
+} from "../../lib/tauriClient"
+import CreateTableDialog from "./CreateTableDialog.vue"
+import DataTab from "./DataTab.vue"
+import ExportDialog from "./ExportDialog.vue"
+import { DATA_REFRESH_KEY, TRIGGER_DATA_REFRESH_KEY } from "./explorerShared"
+import ImportDialog from "./ImportDialog.vue"
 import IndexesTab from "./IndexesTab.vue"
-import MaintenanceTab from "./MaintenanceTab.vue"
+import MaintenanceDialog from "./MaintenanceDialog.vue"
+import RenameTableDialog from "./RenameTableDialog.vue"
 import SchemaTab from "./SchemaTab.vue"
 import VersionsTab from "./VersionsTab.vue"
 
@@ -42,10 +30,10 @@ const {
 	connectionId,
 	activeTableName,
 	activeTableId,
+	schema,
 	openTable,
 	refreshTables,
 	clearActiveTable,
-	setError,
 	setStatus,
 	clearMessages,
 } = useWorkspace()
@@ -63,15 +51,7 @@ provide(TRIGGER_DATA_REFRESH_KEY, () => {
 
 // ── Tab management ─────────────────────────────────────
 
-const VALID_TABS = [
-	"schema",
-	"data",
-	"write",
-	"import-export",
-	"maintenance",
-	"versions",
-	"indexes",
-] as const
+const VALID_TABS = ["schema", "data", "versions", "indexes"] as const
 
 const activeInnerTab = computed(() => {
 	const tab = route.params.tab as string | undefined
@@ -80,6 +60,35 @@ const activeInnerTab = computed(() => {
 	}
 	return "schema"
 })
+
+// ── Dialog state (import / export / maintenance) ───────
+
+const showImportDialog = ref(false)
+const showExportDialog = ref(false)
+const showMaintenanceDialog = ref(false)
+
+// ── Table summary info ─────────────────────────────────
+
+const tableSummaryVersion = ref<number | null>(null)
+const tableSummaryIndexCount = ref<number | null>(null)
+const fieldCount = computed(() => schema.value?.fields.length ?? 0)
+
+async function loadTableSummary() {
+	const tableId = activeTableId.value
+	if (!tableId) return
+	try {
+		const versionResponse = unwrapEnvelope(await getTableVersionV1({ tableId }))
+		tableSummaryVersion.value = versionResponse.version
+	} catch {
+		tableSummaryVersion.value = null
+	}
+	try {
+		const indexResponse = unwrapEnvelope(await listIndexesV1(tableId))
+		tableSummaryIndexCount.value = indexResponse.indexes.length
+	} catch {
+		tableSummaryIndexCount.value = null
+	}
+}
 
 const canManageTables = computed(() => Boolean(connectionId.value))
 const connectionLabel = computed(() => activeProfile.value?.name ?? "未连接")
@@ -159,6 +168,33 @@ async function showTableContextMenu(tableName: string, event: MouseEvent) {
 				},
 			}),
 			await MenuItem.new({
+				id: "import",
+				text: "导入数据…",
+				action: async () => {
+					if (await navigateToTable(tableName, "data")) {
+						showImportDialog.value = true
+					}
+				},
+			}),
+			await MenuItem.new({
+				id: "export",
+				text: "导出数据…",
+				action: async () => {
+					if (await navigateToTable(tableName, "data")) {
+						showExportDialog.value = true
+					}
+				},
+			}),
+			await MenuItem.new({
+				id: "maintenance",
+				text: "维护（Compact / Vacuum）…",
+				action: async () => {
+					if (await navigateToTable(tableName)) {
+						showMaintenanceDialog.value = true
+					}
+				},
+			}),
+			await MenuItem.new({
 				id: "rename",
 				text: "重命名…",
 				action: async () => {
@@ -213,68 +249,22 @@ function dropActiveTable() {
 	void dropTableByName(tableName)
 }
 
-// ── Rename table ───────────────────────────────────────
+// ── Rename table (dialog) ──────────────────────────────
 
-const { execute: execRenameTable, isLoading: isRenamingTable } = useCommand("重命名表失败")
-const renameTargetName = ref("")
-const renameSourceTable = ref<string | null>(null)
 const showRenameModal = ref(false)
+const renameSourceTable = ref<string | null>(null)
 
 async function openRenameModal(tableName: string) {
 	if (!(await navigateToTable(tableName))) {
 		return
 	}
 	renameSourceTable.value = tableName
-	renameTargetName.value = tableName
 	showRenameModal.value = true
 }
 
-async function submitRenameTable() {
-	const profileId = activeProfileId.value
-	const currentConnectionId = connectionId.value
-	const tableName = renameSourceTable.value ?? activeTableName.value
-	if (!profileId || !currentConnectionId || !tableName) {
-		return
-	}
-	const newTableName = renameTargetName.value.trim()
-	if (!newTableName) {
-		setError("请输入新表名")
-		return
-	}
-	if (newTableName === tableName) {
-		setError("新表名不能与当前表名相同")
-		return
-	}
-	await execRenameTable(async () => {
-		const response = unwrapEnvelope(
-			await renameTableV1({
-				connectionId: currentConnectionId,
-				tableName,
-				newTableName,
-			})
-		)
-		setStatus(`已重命名为 ${response.newTableName}`)
-		renameTargetName.value = ""
-		renameSourceTable.value = null
-		showRenameModal.value = false
-		await refreshTables(profileId)
-		await openTable(profileId, response.newTableName)
-	})
-}
-
-watch(showRenameModal, (visible) => {
-	if (!visible) {
-		renameSourceTable.value = null
-		renameTargetName.value = ""
-	}
-})
-
-// ── Create table ───────────────────────────────────────
+// ── Create table (dialog) ──────────────────────────────
 
 const showCreateTableModal = ref(false)
-const createTableName = ref("")
-const createFields = ref<FieldDraft[]>([createFieldDraft()])
-const { execute: execCreateTable, isLoading: isCreatingTable } = useCommand("创建表失败")
 
 watch(
 	[() => route.query.action, () => canManageTables.value],
@@ -293,63 +283,23 @@ watch(
 	{ immediate: true }
 )
 
-function addCreateField() {
-	createFields.value = [...createFields.value, createFieldDraft()]
-}
-
-function removeCreateField(index: number) {
-	createFields.value = createFields.value.filter((_, idx) => idx !== index)
-}
-
-async function submitCreateTable() {
-	const profileId = activeProfileId.value
-	const currentConnectionId = connectionId.value
-	if (!profileId || !currentConnectionId) {
-		return
-	}
-	const tableName = createTableName.value.trim()
-	if (!tableName) {
-		setError("请输入表名")
-		return
-	}
-	const fields = createFields.value.map(toFieldInput).filter(Boolean) as SchemaFieldInput[]
-	if (!fields.length) {
-		setError("至少需要一个字段")
-		return
-	}
-	const invalidVector = fields.find(
-		(field) => field.dataType === "fixed_size_list_float32" && !field.vectorLength
-	)
-	if (invalidVector) {
-		setError("向量列需要指定维度")
-		return
-	}
-	await execCreateTable(async () => {
-		unwrapEnvelope(await createTableV1(currentConnectionId, tableName, { fields }))
-		setStatus(`已创建表 ${tableName}`)
-		await refreshTables(profileId)
-		await openTable(profileId, tableName)
-		createTableName.value = ""
-		createFields.value = [createFieldDraft()]
-		showCreateTableModal.value = false
-	})
-}
-
 // ── Watchers ───────────────────────────────────────────
 
 watch(activeProfileId, () => {
-	createTableName.value = ""
-	createFields.value = [createFieldDraft()]
 	showRenameModal.value = false
 	renameSourceTable.value = null
-	renameTargetName.value = ""
+	showCreateTableModal.value = false
 })
 
 watch(activeTableId, () => {
 	clearMessages()
 	showRenameModal.value = false
 	renameSourceTable.value = null
-	renameTargetName.value = ""
+	tableSummaryVersion.value = null
+	tableSummaryIndexCount.value = null
+	if (activeTableId.value) {
+		void loadTableSummary()
+	}
 })
 
 // ── Route ↔ table sync ────────────────────────────────
@@ -389,10 +339,10 @@ watch(
 </script>
 
 <template>
-	<div class="space-y-4">
+	<div class="flex h-full flex-col">
 		<div
 			v-if="!canManageTables"
-			class="flex flex-col items-center justify-center gap-3 py-20 text-center"
+			class="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-center"
 		>
 			<div
 				class="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"
@@ -408,7 +358,7 @@ watch(
 		</div>
 		<div
 			v-else-if="!activeTableName"
-			class="flex flex-col items-center justify-center gap-3 py-20 text-center"
+			class="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-center"
 		>
 			<div
 				class="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-50 text-sky-400"
@@ -424,171 +374,88 @@ watch(
 		</div>
 
 		<template v-else>
-			<div class="flex items-center gap-1.5 text-sm">
-				<span class="text-slate-500">{{ connectionLabel }}</span>
-				<ChevronRight class="h-3.5 w-3.5 text-slate-400" />
-				<span
-					class="cursor-context-menu font-medium text-slate-800"
-					@contextmenu="showTableContextMenu(activeTableName!, $event)"
+			<!-- Sticky breadcrumb + tabs header -->
+			<div class="sticky top-0 z-20 bg-slate-50 pb-1">
+				<div class="flex items-center gap-1.5 py-2 text-sm">
+					<span class="text-slate-500">{{ connectionLabel }}</span>
+					<ChevronRight class="h-3.5 w-3.5 text-slate-400" />
+					<span
+						class="cursor-context-menu font-medium text-slate-800"
+						@contextmenu="showTableContextMenu(activeTableName!, $event)"
+					>
+						{{ activeTableName }}
+					</span>
+					<span class="mx-1 text-slate-300">|</span>
+					<span class="inline-flex items-center gap-3 text-xs text-slate-400">
+						<span>{{ fieldCount }} 列</span>
+						<span v-if="tableSummaryVersion !== null">v{{ tableSummaryVersion }}</span>
+						<span v-if="tableSummaryIndexCount !== null">
+							{{ tableSummaryIndexCount }} 索引
+						</span>
+					</span>
+				</div>
+
+				<NTabs
+					:value="activeInnerTab"
+					type="line"
+					display-directive="if"
+					@update:value="switchTab"
 				>
-					{{ activeTableName }}
-				</span>
+					<template #suffix>
+						<div class="flex items-center gap-1">
+							<NButton
+								quaternary
+								size="tiny"
+								@click="showImportDialog = true"
+							>
+								导入
+							</NButton>
+							<NButton
+								quaternary
+								size="tiny"
+								@click="showExportDialog = true"
+							>
+								导出
+							</NButton>
+							<NButton
+								quaternary
+								size="tiny"
+								@click="showMaintenanceDialog = true"
+							>
+								维护
+							</NButton>
+						</div>
+					</template>
+					<NTab name="schema" :tab="renderTabLabel(TableProperties, 'Schema')" />
+					<NTab name="data" :tab="renderTabLabel(Table2, '数据')" />
+					<NTab name="indexes" :tab="renderTabLabel(ListTree, '索引')" />
+					<NTab name="versions" :tab="renderTabLabel(History, '版本')" />
+				</NTabs>
 			</div>
 
-			<NTabs :value="activeInnerTab" type="line" @update:value="switchTab">
-				<NTabPane name="schema" :tab="renderTabLabel(TableProperties, 'Schema')">
-					<SchemaTab @drop-table="dropActiveTable" />
-				</NTabPane>
-				<NTabPane name="data" :tab="renderTabLabel(Table2, '数据浏览')">
-					<DataBrowseTab />
-				</NTabPane>
-				<NTabPane name="write" :tab="renderTabLabel(PenLine, '数据写入')">
-					<DataWriteTab />
-				</NTabPane>
-				<NTabPane
-					name="import-export"
-					:tab="renderTabLabel(ArrowLeftRight, '导入导出')"
-				>
-					<ImportExportTab />
-				</NTabPane>
-				<NTabPane name="maintenance" :tab="renderTabLabel(Wrench, '维护')">
-					<MaintenanceTab />
-				</NTabPane>
-				<NTabPane name="versions" :tab="renderTabLabel(History, '版本与时间旅行')">
-					<VersionsTab />
-				</NTabPane>
-				<NTabPane name="indexes" :tab="renderTabLabel(ListTree, '索引管理')">
-					<IndexesTab />
-				</NTabPane>
-			</NTabs>
+			<!-- Scrollable tab content -->
+			<div class="min-h-0 flex-1 overflow-y-auto pt-2">
+				<SchemaTab
+					v-if="activeInnerTab === 'schema'"
+					@drop-table="dropActiveTable"
+				/>
+				<DataTab
+					v-else-if="activeInnerTab === 'data'"
+					@request-export="showExportDialog = true"
+				/>
+				<IndexesTab v-else-if="activeInnerTab === 'indexes'" />
+				<VersionsTab v-else-if="activeInnerTab === 'versions'" />
+			</div>
 		</template>
 
-		<NModal
+		<!-- Dialogs -->
+		<ImportDialog v-model:show="showImportDialog" />
+		<ExportDialog v-model:show="showExportDialog" />
+		<MaintenanceDialog v-model:show="showMaintenanceDialog" />
+		<RenameTableDialog
 			v-model:show="showRenameModal"
-			:mask-closable="!isRenamingTable"
-			:close-on-esc="!isRenamingTable"
-		>
-			<NCard
-				size="small"
-				title="重命名表"
-				class="w-[420px]"
-				:closable="!isRenamingTable"
-				:bordered="false"
-				@close="showRenameModal = false"
-			>
-				<div class="space-y-3">
-					<div class="text-xs text-slate-500">
-						当前表：{{ renameSourceTable ?? activeTableName ?? "—" }}
-					</div>
-					<NInput
-						v-model:value="renameTargetName"
-						placeholder="new_table_name"
-						:disabled="isRenamingTable"
-					/>
-					<div class="flex items-center justify-end gap-2">
-						<NButton
-							quaternary
-							:disabled="isRenamingTable"
-							@click="showRenameModal = false"
-						>
-							取消
-						</NButton>
-						<NButton
-							type="primary"
-							:loading="isRenamingTable"
-							@click="submitRenameTable"
-						>
-							确认重命名
-						</NButton>
-					</div>
-					<div class="text-[11px] text-slate-400">
-						仅 LanceDB Cloud 支持重命名；本地连接将提示不支持。
-					</div>
-				</div>
-			</NCard>
-		</NModal>
-
-		<NModal
-			v-model:show="showCreateTableModal"
-			:mask-closable="!isCreatingTable"
-			:close-on-esc="!isCreatingTable"
-		>
-			<NCard
-				size="small"
-				title="创建表"
-				class="w-[760px] max-w-[calc(100vw-40px)]"
-				:closable="!isCreatingTable"
-				:bordered="false"
-				@close="showCreateTableModal = false"
-			>
-				<div class="grid gap-3 xl:grid-cols-6">
-					<div class="xl:col-span-2">
-						<label class="text-sm font-medium text-slate-600">表名</label>
-						<NInput v-model:value="createTableName" placeholder="new_table" />
-					</div>
-					<div class="xl:col-span-4 flex items-end justify-end gap-2">
-						<NButton
-							quaternary
-							:disabled="isCreatingTable"
-							@click="showCreateTableModal = false"
-						>
-							取消
-						</NButton>
-						<NButton
-							secondary
-							:disabled="isCreatingTable"
-							@click="addCreateField"
-						>
-							添加字段
-						</NButton>
-						<NButton
-							type="primary"
-							:loading="isCreatingTable"
-							@click="submitCreateTable"
-						>
-							创建表
-						</NButton>
-					</div>
-				</div>
-
-				<div class="mt-3 space-y-2">
-					<div
-						v-for="(field, index) in createFields"
-						:key="`create-${index}`"
-						class="grid gap-2 rounded-md border border-slate-100 bg-slate-50/60 p-2 md:grid-cols-12"
-					>
-						<NInput
-							v-model:value="field.name"
-							placeholder="字段名"
-							class="md:col-span-4"
-						/>
-						<NSelect
-							v-model:value="field.dataType"
-							:options="fieldTypeOptions"
-							class="md:col-span-4"
-						/>
-						<NCheckbox v-model:checked="field.nullable" class="md:col-span-2">
-							可为空
-						</NCheckbox>
-						<NInputNumber
-							v-if="isVectorType(field.dataType)"
-							v-model:value="field.vectorLength"
-							:min="1"
-							placeholder="维度"
-							class="md:col-span-2"
-						/>
-						<NButton
-							v-if="createFields.length > 1"
-							quaternary
-							class="md:col-span-2"
-							:disabled="isCreatingTable"
-							@click="removeCreateField(index)"
-						>
-							移除
-						</NButton>
-					</div>
-				</div>
-			</NCard>
-		</NModal>
+			:table-name="renameSourceTable"
+		/>
+		<CreateTableDialog v-model:show="showCreateTableModal" />
 	</div>
 </template>

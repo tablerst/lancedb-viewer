@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { darkTheme } from "naive-ui"
 import { computed, watchEffect } from "vue"
 import { RouterView, useRoute } from "vue-router"
 import PrimaryNav from "./components/layout/PrimaryNav.vue"
@@ -7,8 +8,11 @@ import Sidebar from "./components/sidebar/Sidebar.vue"
 import { useConnection } from "./composables/useConnection"
 import { useProfiles } from "./composables/useProfiles"
 import { useStatusMessages } from "./composables/useStatusMessages"
+import { useTheme } from "./composables/useTheme"
 import { provideWorkspace } from "./composables/workspaceContext"
-import { themeOverrides } from "./theme/naiveTheme"
+import { darkThemeOverrides, themeOverrides } from "./theme/naiveTheme"
+
+const { isDark } = useTheme()
 
 const route = useRoute()
 
@@ -135,7 +139,7 @@ watchEffect(() => {
 </script>
 
 <template>
-	<NConfigProvider :theme-overrides="themeOverrides">
+	<NConfigProvider :theme="isDark ? darkTheme : undefined" :theme-overrides="isDark ? darkThemeOverrides : themeOverrides">
 		<NGlobalStyle />
 		<NMessageProvider>
 			<NDialogProvider>
@@ -157,7 +161,7 @@ watchEffect(() => {
 							:on-open-table="openTable"
 						/>
 
-						<main class="min-w-0 flex-1 overflow-y-auto">
+						<main class="min-w-0 flex-1 flex flex-col overflow-hidden">
 							<div v-if="errorMessage" class="px-6 pt-4">
 								<NAlert
 									type="error"
@@ -167,8 +171,8 @@ watchEffect(() => {
 									{{ errorMessage }}
 								</NAlert>
 							</div>
-							<div class="p-6">
-								<div :class="isFullWidthRoute ? 'w-full' : 'mx-auto w-full max-w-[1600px]'">
+							<div class="min-h-0 flex-1 overflow-y-auto p-6">
+								<div :class="isFullWidthRoute ? 'w-full h-full' : 'mx-auto w-full max-w-[1600px]'">
 									<RouterView />
 								</div>
 							</div>

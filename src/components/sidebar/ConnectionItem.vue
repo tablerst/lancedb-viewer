@@ -71,11 +71,20 @@ const statusTextClass = computed(() => {
 	}
 	return "text-slate-500"
 })
-const showCollapsedStatus = computed(() => isConnecting.value || isDisconnecting.value)
 const lastConnectedLabel = computed(() => formatTimestamp(props.profile.lastConnectedAt))
-const collapsedTitle = computed(() => {
-	return `${props.profile.name} · ${statusText.value} · ${kindLabel.value}`
+const initials = computed(() => {
+	const name = props.profile.name.trim()
+	if (!name) return "?"
+	const parts = name.split(/[\s_\-./\\]+/).filter(Boolean)
+	if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+	return name.slice(0, 2).toUpperCase()
 })
+const avatarBgClass = computed(() => {
+	if (isConnecting.value || isDisconnecting.value) return "bg-amber-100 text-amber-700"
+	if (isConnected.value) return "bg-sky-100 text-sky-700"
+	return "bg-slate-100 text-slate-500"
+})
+const tableCount = computed(() => tables.value.length)
 
 const isExpanded = ref(true)
 const tableListHeight = computed(() => Math.min(tables.value.length * 32, 200))
@@ -125,12 +134,12 @@ function handleContextMenu(event: MouseEvent) {
 				: 'hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md',
 			collapsed
 				? selected
-					? 'min-h-[84px] bg-sky-50/40 hover:bg-sky-50/60'
-					: 'min-h-[84px] bg-slate-50/40 hover:bg-slate-50/70'
+					? 'bg-sky-50/40 hover:bg-sky-50/60'
+					: 'bg-slate-50/40 hover:bg-slate-50/70'
 				: '',
 			!isConnected && !isConnecting && !isDisconnecting ? 'opacity-70 hover:opacity-100' : '',
 		]"
-		:content-style="collapsed ? { padding: '10px 8px' } : undefined"
+		:content-style="collapsed ? { padding: '6px 4px' } : undefined"
 		@contextmenu="handleContextMenu"
 	>
 		<!-- V-2: Connected left indicator -->
@@ -142,32 +151,49 @@ function handleContextMenu(event: MouseEvent) {
 			v-else-if="(isConnecting || isDisconnecting) && !collapsed"
 			class="absolute left-0 top-0 h-full w-[3px] animate-pulse rounded-l-xl bg-amber-400 transition-opacity duration-200"
 		/>
-		<div v-if="collapsed" class="flex flex-col items-center gap-1.5">
-			<button
-				class="group flex w-full flex-col items-center gap-1 rounded-md px-2 py-1.5 text-center transition hover:bg-slate-100/70 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
-				:title="collapsedTitle"
-				@click="emit('select')"
-			>
-				<div class="flex items-center gap-1.5">
-					<span class="h-2 w-2 rounded-full" :class="statusDotClass" />
-					<div
-						class="max-w-full truncate text-[11px] font-semibold leading-tight text-slate-800"
-						:title="profile.name"
+		<!-- Collapsed left indicator (consistent with expanded) -->
+		<div
+			v-if="isConnected && collapsed"
+			class="absolute left-0 top-0 h-full w-[3px] rounded-l-xl bg-sky-400 transition-opacity duration-200"
+		/>
+		<div
+			v-else-if="(isConnecting || isDisconnecting) && collapsed"
+			class="absolute left-0 top-0 h-full w-[3px] animate-pulse rounded-l-xl bg-amber-400 transition-opacity duration-200"
+		/>
+		<div v-if="collapsed" class="flex flex-col items-center gap-0.5">
+			<NTooltip placement="right" :delay="300">
+				<template #trigger>
+					<button
+						class="group/btn flex w-full flex-col items-center gap-1 rounded-md px-1 py-1 text-center transition hover:bg-slate-100/70 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+						@click="emit('select')"
 					>
-						{{ profile.name }}
+						<div class="relative">
+							<div
+								class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-colors"
+								:class="avatarBgClass"
+							>
+								{{ initials }}
+							</div>
+							<span
+								class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white"
+								:class="statusDotClass"
+							/>
+						</div>
+					</button>
+				</template>
+				<div class="space-y-1 text-xs">
+					<div class="font-semibold">{{ profile.name }}</div>
+					<div class="text-slate-400">{{ profile.uri }}</div>
+					<div class="flex items-center gap-2">
+						<span :class="statusTextClass">{{ statusText }}</span>
+						<span class="text-slate-400">·</span>
+						<span class="text-slate-400">{{ kindLabel }}</span>
+					</div>
+					<div v-if="isConnected" class="text-slate-400">
+						{{ tableCount }} 张表
 					</div>
 				</div>
-				<div
-					v-if="showCollapsedStatus"
-					class="text-[10px] font-medium leading-tight"
-					:class="statusTextClass"
-				>
-					{{ statusText }}
-				</div>
-			</button>
-			<NTag size="small" :type="tagType" :bordered="false" class="text-[10px]">
-				{{ kindLabel }}
-			</NTag>
+			</NTooltip>
 		</div>
 
 		<div v-else>
