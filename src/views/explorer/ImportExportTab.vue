@@ -2,20 +2,14 @@
 import { open, save } from "@tauri-apps/plugin-dialog"
 import type { SelectOption } from "naive-ui"
 import { computed, inject, ref, watch } from "vue"
+import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
 import type { DataFileFormatV1, WriteDataMode } from "../../ipc/v1"
 import { exportDataV1, importDataV1, unwrapEnvelope } from "../../lib/tauriClient"
 import { fileFormatOptions, TRIGGER_DATA_REFRESH_KEY, writeModeOptions } from "./explorerShared"
 
-const {
-	activeProfileId,
-	activeTableId,
-	schema,
-	setError,
-	setStatus,
-	clearMessages,
-	refreshSchema,
-} = useWorkspace()
+const { activeProfileId, activeTableId, schema, setError, setStatus, refreshSchema } =
+	useWorkspace()
 
 const triggerDataRefresh = inject(TRIGGER_DATA_REFRESH_KEY, () => {})
 
@@ -32,7 +26,7 @@ const importPath = ref("")
 const importMode = ref<WriteDataMode>("append")
 const importHasHeader = ref(true)
 const importDelimiter = ref(",")
-const isImporting = ref(false)
+const { execute: execImport, isLoading: isImporting } = useCommand("导入失败")
 
 const isCsvImport = computed(() => importFormat.value === "csv")
 
@@ -67,7 +61,7 @@ async function submitImportData() {
 	const profileId = activeProfileId.value
 	const tableId = activeTableId.value
 	const path = importPath.value.trim()
-	if (!profileId || !tableId || isImporting.value) {
+	if (!profileId || !tableId) {
 		return
 	}
 	if (!path) {
@@ -75,9 +69,7 @@ async function submitImportData() {
 		return
 	}
 	const delimiter = importDelimiter.value.trim()
-	try {
-		isImporting.value = true
-		clearMessages()
+	await execImport(async () => {
 		const response = unwrapEnvelope(
 			await importDataV1({
 				tableId,
@@ -91,11 +83,7 @@ async function submitImportData() {
 		setStatus(`已导入 ${response.rows} 行数据`)
 		await refreshSchema(profileId)
 		triggerDataRefresh()
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "导入失败")
-	} finally {
-		isImporting.value = false
-	}
+	})
 }
 
 // ── Export ──────────────────────────────────────────────
@@ -108,7 +96,7 @@ const exportLimit = ref<number | null>(1000)
 const exportOffset = ref<number | null>(0)
 const exportWithHeader = ref(true)
 const exportDelimiter = ref(",")
-const isExporting = ref(false)
+const { execute: execExport, isLoading: isExporting } = useCommand("导出失败")
 
 const isCsvExport = computed(() => exportFormat.value === "csv")
 
@@ -124,7 +112,7 @@ async function selectExportFile() {
 async function submitExportData() {
 	const tableId = activeTableId.value
 	const path = exportPath.value.trim()
-	if (!tableId || isExporting.value) {
+	if (!tableId) {
 		return
 	}
 	if (!path) {
@@ -134,9 +122,7 @@ async function submitExportData() {
 	const limit = exportLimit.value && exportLimit.value > 0 ? exportLimit.value : undefined
 	const offsetValue = exportOffset.value ?? undefined
 	const delimiter = exportDelimiter.value.trim()
-	try {
-		isExporting.value = true
-		clearMessages()
+	await execExport(async () => {
 		const response = unwrapEnvelope(
 			await exportDataV1({
 				tableId,
@@ -151,11 +137,7 @@ async function submitExportData() {
 			})
 		)
 		setStatus(`已导出 ${response.rows} 行数据到 ${response.path}`)
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "导出失败")
-	} finally {
-		isExporting.value = false
-	}
+	})
 }
 
 // ── Reset on table switch ──────────────────────────────

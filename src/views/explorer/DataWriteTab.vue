@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { inject, ref, watch } from "vue"
+import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
 import type { WriteDataMode } from "../../ipc/v1"
 import { deleteRowsV1, unwrapEnvelope, updateRowsV1, writeRowsV1 } from "../../lib/tauriClient"
 import { TRIGGER_DATA_REFRESH_KEY, type UpdateDraft, writeModeOptions } from "./explorerShared"
 
-const { activeProfileId, activeTableId, setError, setStatus, clearMessages } = useWorkspace()
+const { activeProfileId, activeTableId, setError, setStatus } = useWorkspace()
 
 const triggerDataRefresh = inject(TRIGGER_DATA_REFRESH_KEY, () => {})
 
@@ -13,7 +14,7 @@ const triggerDataRefresh = inject(TRIGGER_DATA_REFRESH_KEY, () => {})
 
 const writeMode = ref<WriteDataMode>("append")
 const writeRowsText = ref("[]")
-const isWritingRows = ref(false)
+const { execute: execWriteRows, isLoading: isWritingRows } = useCommand("写入数据失败")
 
 function parseWriteRows(): unknown[] | null {
 	try {
@@ -29,7 +30,7 @@ function parseWriteRows(): unknown[] | null {
 
 async function submitWriteRows() {
 	const tableId = activeTableId.value
-	if (!activeProfileId.value || !tableId || isWritingRows.value) {
+	if (!activeProfileId.value || !tableId) {
 		return
 	}
 	const rows = parseWriteRows()
@@ -37,24 +38,18 @@ async function submitWriteRows() {
 		setError("请输入 JSON 数组格式的行数据")
 		return
 	}
-	try {
-		isWritingRows.value = true
-		clearMessages()
+	await execWriteRows(async () => {
 		unwrapEnvelope(await writeRowsV1(tableId, rows, writeMode.value))
 		setStatus(`已写入 ${rows.length} 行数据`)
 		triggerDataRefresh()
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "写入数据失败")
-	} finally {
-		isWritingRows.value = false
-	}
+	})
 }
 
 // ── Update rows ────────────────────────────────────────
 
 const updateFilter = ref("")
 const updateColumns = ref<UpdateDraft[]>([{ column: "", expr: "" }])
-const isUpdatingRows = ref(false)
+const { execute: execUpdateRows, isLoading: isUpdatingRows } = useCommand("更新数据失败")
 
 function addUpdateColumn() {
 	updateColumns.value = [...updateColumns.value, { column: "", expr: "" }]
@@ -66,7 +61,7 @@ function removeUpdateColumn(index: number) {
 
 async function submitUpdateRows() {
 	const tableId = activeTableId.value
-	if (!activeProfileId.value || !tableId || isUpdatingRows.value) {
+	if (!activeProfileId.value || !tableId) {
 		return
 	}
 	const updates = updateColumns.value
@@ -76,9 +71,7 @@ async function submitUpdateRows() {
 		setError("请填写需要更新的列与表达式")
 		return
 	}
-	try {
-		isUpdatingRows.value = true
-		clearMessages()
+	await execUpdateRows(async () => {
 		unwrapEnvelope(
 			await updateRowsV1({
 				tableId,
@@ -88,39 +81,29 @@ async function submitUpdateRows() {
 		)
 		setStatus("更新操作已提交")
 		triggerDataRefresh()
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "更新数据失败")
-	} finally {
-		isUpdatingRows.value = false
-	}
+	})
 }
 
 // ── Delete rows ────────────────────────────────────────
 
 const deleteFilter = ref("")
-const isDeletingRows = ref(false)
+const { execute: execDeleteRows, isLoading: isDeletingRows } = useCommand("删除数据失败")
 
 async function submitDeleteRows() {
 	const tableId = activeTableId.value
 	const filter = deleteFilter.value.trim()
-	if (!activeProfileId.value || !tableId || isDeletingRows.value) {
+	if (!activeProfileId.value || !tableId) {
 		return
 	}
 	if (!filter) {
 		setError("请输入删除条件")
 		return
 	}
-	try {
-		isDeletingRows.value = true
-		clearMessages()
+	await execDeleteRows(async () => {
 		unwrapEnvelope(await deleteRowsV1(tableId, filter))
 		setStatus("删除操作已提交")
 		triggerDataRefresh()
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "删除数据失败")
-	} finally {
-		isDeletingRows.value = false
-	}
+	})
 }
 
 // ── Reset on table switch ──────────────────────────────

@@ -15,6 +15,7 @@ import {
 } from "lucide-vue-next"
 import { type Component, computed, h, nextTick, provide, readonly, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
+import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
 import type { SchemaFieldInput } from "../../ipc/v1"
 import { createTableV1, dropTableV1, renameTableV1, unwrapEnvelope } from "../../lib/tauriClient"
@@ -62,7 +63,23 @@ provide(TRIGGER_DATA_REFRESH_KEY, () => {
 
 // ── Tab management ─────────────────────────────────────
 
-const activeInnerTab = ref("schema")
+const VALID_TABS = [
+	"schema",
+	"data",
+	"write",
+	"import-export",
+	"maintenance",
+	"versions",
+	"indexes",
+] as const
+
+const activeInnerTab = computed(() => {
+	const tab = route.params.tab as string | undefined
+	if (tab && (VALID_TABS as readonly string[]).includes(tab)) {
+		return tab
+	}
+	return "schema"
+})
 
 const canManageTables = computed(() => Boolean(connectionId.value))
 const connectionLabel = computed(() => activeProfile.value?.name ?? "未连接")
@@ -75,13 +92,36 @@ function renderTabLabel(icon: Component, label: string) {
 		])
 }
 
-async function ensureActiveTable(tableName: string) {
+function switchTab(tab: string | number) {
+	const id = route.params.id as string
+	const tableName = activeTableName.value
+	if (id && tableName) {
+		router.push({
+			name: "table-tab",
+			params: { id, tableName, tab: String(tab) },
+		})
+	}
+}
+
+let navigating = false
+
+async function navigateToTable(tableName: string, tab = "schema") {
 	const profileId = activeProfileId.value
-	if (!profileId) {
+	const id = route.params.id as string
+	if (!profileId || !id) {
 		return false
 	}
-	if (activeTableName.value !== tableName) {
-		await openTable(profileId, tableName)
+	navigating = true
+	try {
+		if (activeTableName.value !== tableName) {
+			await openTable(profileId, tableName)
+		}
+		await router.push({
+			name: "table-tab",
+			params: { id, tableName, tab },
+		})
+	} finally {
+		navigating = false
 	}
 	return true
 }
@@ -101,25 +141,21 @@ async function showTableContextMenu(tableName: string, event: MouseEvent) {
 				id: "open",
 				text: "打开",
 				action: async () => {
-					await ensureActiveTable(tableName)
+					await navigateToTable(tableName)
 				},
 			}),
 			await MenuItem.new({
 				id: "data",
 				text: "数据浏览",
 				action: async () => {
-					if (await ensureActiveTable(tableName)) {
-						activeInnerTab.value = "data"
-					}
+					await navigateToTable(tableName, "data")
 				},
 			}),
 			await MenuItem.new({
 				id: "versions",
 				text: "版本与时间旅行",
 				action: async () => {
-					if (await ensureActiveTable(tableName)) {
-						activeInnerTab.value = "versions"
-					}
+					await navigateToTable(tableName, "versions")
 				},
 			}),
 			await MenuItem.new({
@@ -143,7 +179,7 @@ async function showTableContextMenu(tableName: string, event: MouseEvent) {
 
 // ── Drop table ─────────────────────────────────────────
 
-const isDropping = ref(false)
+const { execute: execDropTable } = useCommand("删除表失败")
 
 async function requestDropTable(tableName: string) {
 	const shouldDrop = await confirm(`确定删除表 ${tableName} 吗？该操作不可撤销。`)
@@ -156,23 +192,17 @@ async function requestDropTable(tableName: string) {
 async function dropTableByName(tableName: string) {
 	const profileId = activeProfileId.value
 	const currentConnectionId = connectionId.value
-	if (!profileId || !currentConnectionId || !tableName || isDropping.value) {
+	if (!profileId || !currentConnectionId || !tableName) {
 		return
 	}
-	try {
-		isDropping.value = true
-		clearMessages()
+	await execDropTable(async () => {
 		unwrapEnvelope(await dropTableV1(currentConnectionId, tableName))
 		setStatus(`已删除表 ${tableName}`)
 		if (activeTableName.value === tableName) {
 			clearActiveTable(profileId)
 		}
 		await refreshTables(profileId)
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "删除表失败")
-	} finally {
-		isDropping.value = false
-	}
+	})
 }
 
 function dropActiveTable() {
@@ -185,13 +215,13 @@ function dropActiveTable() {
 
 // ── Rename table ───────────────────────────────────────
 
-const isRenamingTable = ref(false)
+const { execute: execRenameTable, isLoading: isRenamingTable } = useCommand("重命名表失败")
 const renameTargetName = ref("")
 const renameSourceTable = ref<string | null>(null)
 const showRenameModal = ref(false)
 
 async function openRenameModal(tableName: string) {
-	if (!(await ensureActiveTable(tableName))) {
+	if (!(await navigateToTable(tableName))) {
 		return
 	}
 	renameSourceTable.value = tableName
@@ -203,7 +233,7 @@ async function submitRenameTable() {
 	const profileId = activeProfileId.value
 	const currentConnectionId = connectionId.value
 	const tableName = renameSourceTable.value ?? activeTableName.value
-	if (!profileId || !currentConnectionId || !tableName || isRenamingTable.value) {
+	if (!profileId || !currentConnectionId || !tableName) {
 		return
 	}
 	const newTableName = renameTargetName.value.trim()
@@ -215,9 +245,7 @@ async function submitRenameTable() {
 		setError("新表名不能与当前表名相同")
 		return
 	}
-	try {
-		isRenamingTable.value = true
-		clearMessages()
+	await execRenameTable(async () => {
 		const response = unwrapEnvelope(
 			await renameTableV1({
 				connectionId: currentConnectionId,
@@ -231,11 +259,7 @@ async function submitRenameTable() {
 		showRenameModal.value = false
 		await refreshTables(profileId)
 		await openTable(profileId, response.newTableName)
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "重命名表失败")
-	} finally {
-		isRenamingTable.value = false
-	}
+	})
 }
 
 watch(showRenameModal, (visible) => {
@@ -250,7 +274,7 @@ watch(showRenameModal, (visible) => {
 const showCreateTableModal = ref(false)
 const createTableName = ref("")
 const createFields = ref<FieldDraft[]>([createFieldDraft()])
-const isCreatingTable = ref(false)
+const { execute: execCreateTable, isLoading: isCreatingTable } = useCommand("创建表失败")
 
 watch(
 	[() => route.query.action, () => canManageTables.value],
@@ -280,7 +304,7 @@ function removeCreateField(index: number) {
 async function submitCreateTable() {
 	const profileId = activeProfileId.value
 	const currentConnectionId = connectionId.value
-	if (!profileId || !currentConnectionId || isCreatingTable.value) {
+	if (!profileId || !currentConnectionId) {
 		return
 	}
 	const tableName = createTableName.value.trim()
@@ -300,9 +324,7 @@ async function submitCreateTable() {
 		setError("向量列需要指定维度")
 		return
 	}
-	try {
-		isCreatingTable.value = true
-		clearMessages()
+	await execCreateTable(async () => {
 		unwrapEnvelope(await createTableV1(currentConnectionId, tableName, { fields }))
 		setStatus(`已创建表 ${tableName}`)
 		await refreshTables(profileId)
@@ -310,17 +332,12 @@ async function submitCreateTable() {
 		createTableName.value = ""
 		createFields.value = [createFieldDraft()]
 		showCreateTableModal.value = false
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "创建表失败")
-	} finally {
-		isCreatingTable.value = false
-	}
+	})
 }
 
 // ── Watchers ───────────────────────────────────────────
 
 watch(activeProfileId, () => {
-	activeInnerTab.value = "schema"
 	createTableName.value = ""
 	createFields.value = [createFieldDraft()]
 	showRenameModal.value = false
@@ -330,11 +347,45 @@ watch(activeProfileId, () => {
 
 watch(activeTableId, () => {
 	clearMessages()
-	activeInnerTab.value = "schema"
 	showRenameModal.value = false
 	renameSourceTable.value = null
 	renameTargetName.value = ""
 })
+
+// ── Route ↔ table sync ────────────────────────────────
+
+watch(activeTableName, (newTable) => {
+	if (navigating) return
+	const id = route.params.id as string
+	if (!id) return
+	if (newTable) {
+		if ((route.params.tableName as string | undefined) !== newTable) {
+			router.replace({
+				name: "table-tab",
+				params: { id, tableName: newTable, tab: "schema" },
+			})
+		}
+	} else if (route.params.tableName) {
+		router.replace({
+			name: "connection-explorer",
+			params: { id },
+		})
+	}
+})
+
+watch(
+	() => route.params.tableName as string | undefined,
+	async (routeTable) => {
+		if (navigating) return
+		const profileId = activeProfileId.value
+		if (!profileId) return
+		if (routeTable && routeTable !== activeTableName.value) {
+			await openTable(profileId, routeTable)
+		} else if (!routeTable && activeTableName.value) {
+			clearActiveTable(profileId)
+		}
+	}
+)
 </script>
 
 <template>
@@ -384,7 +435,7 @@ watch(activeTableId, () => {
 				</span>
 			</div>
 
-			<NTabs v-model:value="activeInnerTab" type="line">
+			<NTabs :value="activeInnerTab" type="line" @update:value="switchTab">
 				<NTabPane name="schema" :tab="renderTabLabel(TableProperties, 'Schema')">
 					<SchemaTab @drop-table="dropActiveTable" />
 				</NTabPane>

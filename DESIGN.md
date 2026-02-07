@@ -21,7 +21,7 @@
 ### 1.2 交互原则
 
 - **稳定画布**：右侧正文尽量不因侧边栏交互产生大幅 reflow
-- **就地反馈**：成功/失败状态统一在右侧“连接状态”卡片中呈现（`NAlert`）
+- **就地反馈**：成功用 toast（`NMessage`），错误用持久 `NAlert`（右侧正文顶部），详见 §6.1
 - **低认知负担**：相同动作在不同页面/组件保持同样入口和同样文案
 
 ### 1.3 MVP 约束
@@ -38,12 +38,35 @@
 - 左侧 Sidebar：以连接管理为主（含表树）；全局导航后续补齐（Explorer/Search）
 - 右侧正文：按当前路由展示 Explorer / Search 等工作台
 
-当前落地文件：
+### 2.1 面包屑导航
+
+右侧正文顶部采用**面包屑**取代外层"表 Tab"，仅保留单层功能 Tab：
+
+- 面包屑格式：`连接名 > 表名`
+- 点击连接名跳回连接概况；点击表名可下拉切换同连接下其他表
+- 内层 Tab（Schema / 数据浏览 / …）作为唯一的 Tab 层级，消除双层 Tab 嵌套
+
+### 2.2 Explorer 子路由约定
+
+Explorer 各功能 Tab 映射为子路由，支持 URL 直达与浏览器后退：
+
+```
+/connections/:id/table/:name/schema
+/connections/:id/table/:name/data
+/connections/:id/table/:name/write
+/connections/:id/table/:name/import-export
+/connections/:id/table/:name/maintenance
+/connections/:id/table/:name/versions
+/connections/:id/table/:name/indexes
+```
+
+### 2.3 当前落地文件
 
 - Layout Shell：`src/App.vue`
 - Sidebar：`src/components/sidebar/Sidebar.vue`
 - 连接项卡片：`src/components/sidebar/ConnectionItem.vue`
-- Explorer：`src/views/ExplorerView.vue`
+- Explorer 容器：`src/views/explorer/ExplorerView.vue`
+- Explorer 各 Tab：`src/views/explorer/SchemaTab.vue` / `DataBrowseTab.vue` / …
 
 ---
 
@@ -129,7 +152,17 @@ Sidebar 由上到下：
 - 连接（Connect）：对该连接发起连接（不影响其它连接）
 - 刷新（Refresh）：刷新该连接的表列表
 - 表（Tables）：已连接时可展开/收起表列表
+#### 5.2.1 内联操作按钮
 
+卡片展开态必须在底部（表列表上方）显示**内联操作按钮行**：
+
+- 未连接时：`[连接]`（primary 按钮）
+- 已连接时：`[刷新]`（secondary）+ `[断开]`（quaternary/ghost）
+- 连接中/断开中：按钮 `loading` 状态
+
+右键上下文菜单作为**补充入口**保留（包含编辑/凭证/删除等低频操作），但 **不得是连接/断开/刷新的唯一入口**。
+
+删除卡片上"右键该连接以查看更多操作"的提示文字，将空间还给内联操作按钮。
 一致性要求：
 
 - 任何“连接/刷新/打开表”的动作都必须 **先选中该连接**，确保右侧正文同步。
@@ -157,50 +190,93 @@ Sidebar 由上到下：
 
 ## 6. 右侧正文（Content）规范
 
-### 6.1 顶部连接状态卡
+### 6.1 反馈机制（统一规范）
 
-`src/App.vue` 负责在右侧顶部固定渲染“连接状态”卡（`NCard`）。
+**操作反馈（成功/信息）**：使用 `NMessage`（toast），持续时间 3-5 秒，适用于"连接成功""写入完成"等短暂反馈。
 
-内容：
+**错误反馈**：在右侧正文顶部（`<main>` 内部、Tab 上方）渲染 **持久 NAlert**（`type=error`），用户需手动关闭或下次操作时自动清除。禁止仅用会消失的 toast 展示错误。
 
-- 成功消息：`statusMessage`（`NAlert type=success`）
-- 错误消息：`errorMessage`（`NAlert type=error`）
-- 当前活跃连接名 + 类型 Tag + 表数量
+**全局错误 Banner**：App.vue 中 `<main>` 内部增加一个固定区域，当 `errorMessage` 存在时渲染红色 NAlert。
 
 原则：
 
-- 状态与错误信息统一入口，避免 toast 到处飞
-- 文案要可行动：尽量提示“选择连接/点击连接按钮”等下一步
+- 成功→ toast，错误→ persistent Alert，进度→ 内联 loading
+- 文案要可行动：尽量提示"选择连接/点击连接按钮"等下一步
+
+### 6.2 内容区宽度约束
+
+- **数据浏览 / 检索结果**等表格密集页面：**不设 max-width**，让表格占满可用宽度
+- **Schema、凭证、设置**等信息密度低的页面：保留 `max-w-[1600px]` 容器
+- 通过各 View 自身的 class 或 route meta 控制，而非全局统一限制
 
 ---
 
-## 7. Explorer（表结构 + 数据浏览）规范
+## 7. Explorer（表工作台）规范
 
-文件：`src/views/ExplorerView.vue`
+### 7.0 组件拆分
+
+ExplorerView 拆分为独立子组件，每个 Tab 一个文件，各组件自管状态与 IPC 调用：
+
+```
+src/views/explorer/
+├── ExplorerView.vue           # Tab 容器 + 面包屑 + 打开表管理
+├── SchemaTab.vue              # Schema 展示 + 列操作入口
+├── DataBrowseTab.vue          # Scan + 分页 + 列投影 + 过滤
+├── DataWriteTab.vue           # 写入 / 更新 / 删除（内部子 Tab 或 Accordion）
+├── ImportExportTab.vue        # 导入 + 导出
+├── MaintenanceTab.vue         # Compact + Vacuum
+├── VersionsTab.vue            # 版本列表 + 时间旅行 + 克隆
+├── IndexesTab.vue             # 索引列表 + 创建 + 删除
+└── composables/
+    └── useExplorerTable.ts    # 共享 tableId / schema / reset 逻辑
+```
+
+每个 Tab 通过 `inject/provide` 或 `props` 获取 `tableId` / `connectionId` / `schema` 等必要上下文。
+Tab 切换/表切换时，由组件生命周期自然重置局部状态，无需在父组件手动清零 50+ 个 ref。
 
 ### 7.1 Schema Tab
 
 - 表结构表格：`NDataTable`
 - 字段信息：name / dataType / nullable
+- 底部操作区：新增列 / 修改列 / 删除列 按钮
+- **"删除表"操作**放此 Tab 底部或面包屑右侧 `···` 菜单中，不放在数据浏览 Tab
 
 ### 7.2 数据浏览 Tab
 
-提供：
+查询控制区精简布局：
 
-- Limit / Offset
-- Filter 表达式（目前以字符串输入）
-- 列投影（`NSelect multiple`）
-- 查询按钮
+```
+[过滤表达式输入框]                      [查询(primary)]
+列投影: [多选 Select]        [全选(ghost)] [清空(ghost)]
+```
 
-### 7.3 排序（UI-only）
+- `offset / limit` 整合到分页组件中，不单独显示文字
+- "删除表"等危险操作不在此 Tab 出现
+- 表格宽度不设 max-width，占满可用空间
+
+### 7.3 数据写入 Tab
+
+- "写入/更新/删除"拆为**子 Tab** 或 **Accordion（折叠面板）**，避免同时展示所有表单
+- "删除数据"增加危险标识（红色边框 / 警告条）
+- JSON 写入增加"格式化""校验"辅助按钮
+- 更新/删除成功后自动刷新数据浏览 Tab
+
+### 7.4 排序（UI-only）
 
 - 仅对当前已加载数据片段排序（Naive DataTable `sorter`）
-- 排序比较规则（现状）：
+- 排序比较规则：
   - 可转数字则按数值
   - 否则按字符串比较（`localeCompare`）
   - `null/undefined` 排序靠前
 
-> 说明：此策略保证 MVP 能用，但不等价于“全表排序”。当用户需要全表排序时，应升级后端能力或明确提示。
+> 说明：此策略保证 MVP 能用，但不等价于"全表排序"。当用户需要全表排序时，应升级后端能力或明确提示。
+
+### 7.5 数据表格单元格渲染
+
+- **Vector 列**：默认折叠显示 `[维度d] val1, val2, …`，hover/click 展示完整值
+- **布尔列**：使用 ✅/❌ 图标
+- **null 值**：`text-slate-300 italic` 样式，显示 `NULL`
+- **长文本**：支持行内展开（点击单元格）
 
 ---
 
@@ -286,24 +362,34 @@ Sidebar 由上到下：
 
 ## 12. 状态 / 空态 / 加载态规范
 
-### 12.1 空态（Empty）
+### 12.1 空态（Empty）— 分级设计
 
-- 无连接档案：使用 `NEmpty`，文案引导用户“新建连接/导入连接”
-- 未连接：连接项卡片显示灰色状态灯，并在表列表区域显示“未连接”
-- 未选择表：Explorer 详情卡片显示“选择表以查看详情”
+| 场景 | 组件/实现 | 描述 |
+|------|----------|------|
+| 首次使用（无连接） | 大插图 + CTA 按钮 | "欢迎使用 LanceDB Studio — 创建您的第一个连接" |
+| 有连接但未选表 | `NEmpty` + 引导 | "在左侧选择一个表以开始" |
+| 已连接但表列表为空 | `NEmpty` + "创建表"按钮 | "当前数据库中没有表" |
+| 查询无结果 | `NEmpty` | "没有匹配的数据，尝试调整过滤条件" |
+| 未连接 | 灰色状态灯 + 内联操作按钮 | 表列表区域提示连接 |
 
-### 12.2 加载态（Loading）
+### 12.2 加载态（Loading）— Skeleton 优先
 
-- 连接中：连接按钮 `loading`；避免重复触发
-- 刷新表列表：刷新按钮 `loading`；避免重复触发
-- 打开表：表按钮（或行）显示 loading；Schema 清空后再加载
+- **Sidebar 连接列表首次加载**：显示 2-3 个 skeleton card 占位
+- **Schema 加载**：`NDataTable :loading` + skeleton 行占位（避免整页空白）
+- **数据浏览 Scan**：表格区域 `NDataTable :loading`，保留列头
+- **连接中**：连接按钮 `loading` 状态；禁止重复触发
+- **刷新表列表**：刷新按钮 `loading` 状态；禁止重复触发
+- **打开表**：表按钮/行显示 loading；Schema 清空后再加载
 
 ### 12.3 错误与成功反馈
 
-- 全局反馈统一汇聚到右侧“连接状态”卡片：
-  - 成功：`NAlert type=success`
-  - 失败：`NAlert type=error`
-- 错误文案要求：
+反馈机制遵循 §6.1 统一规范：
+
+- **操作成功**：`NMessage`（toast），持续 3-5 秒
+- **操作失败**：右侧正文顶部 `NAlert type=error`（persistent），手动关闭或下次操作时自动清除
+- **操作进度**（scan、index build）：内联 loading 状态 + 进度文本
+
+错误文案要求：
   - 优先给用户“下一步动作”（例如：检查 URI/权限/网络）
   - 不展示不可读的原始堆栈（必要时提供“复制详情”入口，后续可做）
 
@@ -345,7 +431,93 @@ Sidebar 由上到下：
 
 ## 16. Roadmap（UI 视角）
 
-- Sidebar：补齐筛选（Local/S3/Remote）+ 新建连接 Modal + 全局导航（Explorer/Search）
-- Explorer：补齐常用 DBeaver 风格能力（搜索框、列宽/列固定、快捷筛选）
-- Search：接入 `query_filter_v1 / vector_search_v1 / fts_search_v1`，复用结果表格
-- 性能：启用 Arrow IPC（`format: "arrow"`）以提升大数据场景
+### Phase 1 — 高影响低风险
+
+- ConnectionItem 增加内联操作按钮（连接/断开/刷新）
+- 数据浏览查询区精简 + "删除表"按钮移至 Schema Tab
+- 取消数据页面 `max-width` 限制
+- 错误反馈改为 persistent `NAlert`
+- 表单标签样式升级（`text-sm text-slate-600 font-medium`）
+
+### Phase 2 — 结构性优化
+
+- ExplorerView 拆分为 7+ 子组件（参见 §7.0）
+- 面包屑导航 + 单层 Tab 替代双层 Tab（参见 §2.1）
+- SearchView 精简连接管理 UI，信任 Sidebar 上下文
+- PrimaryNav 改造（增加文字标签或合并到 Sidebar）
+- 视觉层级区分（功能 Tab 图标前缀、区域背景色）
+
+### Phase 3 — 体验提升
+
+- 空态/加载态 Skeleton 完善（参见 §12.2）
+- 数据表格单元格渲染优化（Vector/布尔/null 列，参见 §7.5）
+- Explorer Tab 映射为子路由（URL 直达，参见 §2.2）
+- 版本时间线可视化（NTimeline 组件）
+- 键盘快捷键（`Ctrl+Enter` 执行查询等）
+- `useCommand` composable 统一 IPC 调用模式（参见 §17）
+
+### 持续性目标
+
+- Sidebar 筛选（Local/S3/Remote）+ 全局导航
+- Explorer 补齐 DBeaver 风格能力（列宽/列固定/快捷筛选）
+- Search 复用 Explorer 的结果表格组件
+- 性能：启用 Arrow IPC（`format: "arrow"`）
+
+---
+
+## 17. IPC 调用统一模式
+
+### 17.1 useCommand composable
+
+提取统一的 IPC 调用 + 错误处理模式，消除各提交函数中重复的 try/catch：
+
+```ts
+const { execute, isLoading, error } = useCommand(
+  async (args: Args) => {
+    return unwrapEnvelope(await someIpcCall(args))
+  },
+  {
+    onSuccess: (result) => setStatus("操作完成"),
+    onError: (err) => setError(err),
+  }
+)
+```
+
+- `isLoading`：自动跟踪执行状态，绑定按钮 `:loading`
+- `error`：自动捕获并暴露错误信息，绑定 NAlert
+- 避免每个命令函数手写 `try { ... } catch (e) { errorMessage.value = ... }`
+
+### 17.2 错误类型统一
+
+- IPC 返回的 `Envelope` 已做统一解包（`unwrapEnvelope`）
+- 前端错误分类：`NetworkError` / `ValidationError` / `ServerError`
+- 各类错误对应不同的用户提示策略
+
+---
+
+## 18. 路由规范
+
+### 18.1 Explorer 子路由
+
+Explorer 各功能 Tab 映射为子路由（与 §2.2 对应），支持 URL 直达与浏览器后退：
+
+```
+/connections/:id/table/:name/schema
+/connections/:id/table/:name/data
+/connections/:id/table/:name/write
+/connections/:id/table/:name/import-export
+/connections/:id/table/:name/maintenance
+/connections/:id/table/:name/versions
+/connections/:id/table/:name/indexes
+```
+
+### 18.2 路由 meta
+
+- `layout: 'dialog'`：弹窗类路由（新建/编辑连接），使用独立布局
+- `requiresConnection: true`：需要活跃连接的路由，无连接时重定向到欢迎页
+- `fullWidth: true`：数据浏览等需要全宽的页面
+
+### 18.3 keep-alive 策略
+
+- Explorer Tab 切换时保留各 Tab 组件状态（避免每次切换都重新加载数据）
+- 切换**不同表**时销毁旧组件、重建新组件（通过 `:key="tableId"` 控制）

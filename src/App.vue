@@ -95,6 +95,7 @@ const isFullWidthRoute = computed(() => {
 	return (
 		name === "explorer" ||
 		name === "connection-explorer" ||
+		name === "table-tab" ||
 		name === "search" ||
 		name === "connection-search"
 	)

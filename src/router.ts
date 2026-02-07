@@ -13,6 +13,11 @@ export const router = createRouter({
 	routes: [
 		{ path: "/", name: "explorer", component: ExplorerView },
 		{ path: "/connections/:id", name: "connection-explorer", component: ExplorerView },
+		{
+			path: "/connections/:id/table/:tableName/:tab?",
+			name: "table-tab",
+			component: ExplorerView,
+		},
 		{ path: "/connections/:id/search", name: "connection-search", component: SearchView },
 		{
 			path: "/connections/:id/credentials",

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { DataTableColumns } from "naive-ui"
 import { computed, ref, watch } from "vue"
+import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
 import type { FieldDataType, SchemaField, SchemaFieldInput } from "../../ipc/v1"
 import { addColumnsV1, alterColumnsV1, dropColumnsV1, unwrapEnvelope } from "../../lib/tauriClient"
@@ -21,15 +22,8 @@ import {
 
 defineEmits<(e: "drop-table") => void>()
 
-const {
-	activeProfileId,
-	activeTableId,
-	schema,
-	setError,
-	setStatus,
-	clearMessages,
-	refreshSchema,
-} = useWorkspace()
+const { activeProfileId, activeTableId, schema, setError, setStatus, refreshSchema } =
+	useWorkspace()
 
 const hasActiveTable = computed(() => Boolean(activeTableId.value))
 
@@ -54,13 +48,13 @@ const showColumnOpsModal = ref(false)
 const activeColumnOpsTab = ref<ColumnOpsTab>("add")
 
 const addColumnFields = ref<FieldDraft[]>([createFieldDraft()])
-const isAddingColumns = ref(false)
+const { execute: execAddColumns, isLoading: isAddingColumns } = useCommand("新增列失败")
 
 const alterColumns = ref<AlterDraft[]>([createAlterDraft()])
-const isAlteringColumns = ref(false)
+const { execute: execAlterColumns, isLoading: isAlteringColumns } = useCommand("修改列失败")
 
 const dropColumnNames = ref<string[]>([])
-const isDroppingColumns = ref(false)
+const { execute: execDropColumns, isLoading: isDroppingColumns } = useCommand("删除列失败")
 
 const isColumnOpsBusy = computed(
 	() => isAddingColumns.value || isAlteringColumns.value || isDroppingColumns.value
@@ -90,7 +84,7 @@ function removeAlteration(index: number) {
 async function submitAddColumns() {
 	const profileId = activeProfileId.value
 	const tableId = activeTableId.value
-	if (!profileId || !tableId || isAddingColumns.value) {
+	if (!profileId || !tableId) {
 		return
 	}
 	const fields = addColumnFields.value.map(toFieldInput).filter(Boolean) as SchemaFieldInput[]
@@ -105,24 +99,18 @@ async function submitAddColumns() {
 		setError("向量列需要指定维度")
 		return
 	}
-	try {
-		isAddingColumns.value = true
-		clearMessages()
+	await execAddColumns(async () => {
 		unwrapEnvelope(await addColumnsV1(tableId, { fields }))
 		setStatus("已新增列")
 		await refreshSchema(profileId)
 		addColumnFields.value = [createFieldDraft()]
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "新增列失败")
-	} finally {
-		isAddingColumns.value = false
-	}
+	})
 }
 
 async function submitAlterColumns() {
 	const profileId = activeProfileId.value
 	const tableId = activeTableId.value
-	if (!profileId || !tableId || isAlteringColumns.value) {
+	if (!profileId || !tableId) {
 		return
 	}
 	let invalidVector = false
@@ -161,9 +149,7 @@ async function submitAlterColumns() {
 		setError("请填写需要修改的列信息")
 		return
 	}
-	try {
-		isAlteringColumns.value = true
-		clearMessages()
+	await execAlterColumns(async () => {
 		unwrapEnvelope(
 			await alterColumnsV1({
 				tableId,
@@ -179,35 +165,25 @@ async function submitAlterColumns() {
 		setStatus("已更新列信息")
 		await refreshSchema(profileId)
 		alterColumns.value = [createAlterDraft()]
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "修改列失败")
-	} finally {
-		isAlteringColumns.value = false
-	}
+	})
 }
 
 async function submitDropColumns() {
 	const profileId = activeProfileId.value
 	const tableId = activeTableId.value
-	if (!profileId || !tableId || isDroppingColumns.value) {
+	if (!profileId || !tableId) {
 		return
 	}
 	if (!dropColumnNames.value.length) {
 		setError("请选择需要删除的列")
 		return
 	}
-	try {
-		isDroppingColumns.value = true
-		clearMessages()
+	await execDropColumns(async () => {
 		unwrapEnvelope(await dropColumnsV1(tableId, dropColumnNames.value))
 		setStatus("已删除列")
 		await refreshSchema(profileId)
 		dropColumnNames.value = []
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "删除列失败")
-	} finally {
-		isDroppingColumns.value = false
-	}
+	})
 }
 
 // ── Reset on table switch ──────────────────────────────

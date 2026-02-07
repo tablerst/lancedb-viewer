@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { DataTableColumns, SelectOption } from "naive-ui"
 import { computed, ref, watch } from "vue"
+import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
 import type { IndexDefinitionV1, IndexTypeV1 } from "../../ipc/v1"
 import { createIndexV1, dropIndexV1, listIndexesV1, unwrapEnvelope } from "../../lib/tauriClient"
 import { indexTypeLabels, indexTypeOptions, renderHeader } from "./explorerShared"
 
-const { activeTableId, schema, setError, setStatus, clearMessages } = useWorkspace()
+const { activeTableId, schema, setError, setStatus } = useWorkspace()
 
 const hasActiveTable = computed(() => Boolean(activeTableId.value))
 const allFieldNames = computed(() => schema.value?.fields.map((f) => f.name) ?? [])
@@ -65,11 +66,11 @@ const indexType = ref<IndexTypeV1>("auto")
 const indexColumnsToCreate = ref<string[]>([])
 const indexName = ref("")
 const indexReplace = ref(true)
-const isCreatingIndex = ref(false)
+const { execute: execCreateIndex, isLoading: isCreatingIndex } = useCommand("创建索引失败")
 
 async function submitCreateIndex() {
 	const tableId = activeTableId.value
-	if (!tableId || isCreatingIndex.value) {
+	if (!tableId) {
 		return
 	}
 	const columns = indexColumnsToCreate.value.map((c) => c.trim()).filter(Boolean)
@@ -78,9 +79,7 @@ async function submitCreateIndex() {
 		return
 	}
 	const name = indexName.value.trim() || undefined
-	try {
-		isCreatingIndex.value = true
-		clearMessages()
+	await execCreateIndex(async () => {
 		unwrapEnvelope(
 			await createIndexV1({
 				tableId,
@@ -94,40 +93,30 @@ async function submitCreateIndex() {
 		await loadIndexes()
 		indexName.value = ""
 		indexColumnsToCreate.value = []
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "创建索引失败")
-	} finally {
-		isCreatingIndex.value = false
-	}
+	})
 }
 
 // ── Drop index ─────────────────────────────────────────
 
 const dropIndexName = ref("")
-const isDroppingIndex = ref(false)
+const { execute: execDropIndex, isLoading: isDroppingIndex } = useCommand("删除索引失败")
 
 async function submitDropIndex() {
 	const tableId = activeTableId.value
 	const nameValue = dropIndexName.value.trim()
-	if (!tableId || isDroppingIndex.value) {
+	if (!tableId) {
 		return
 	}
 	if (!nameValue) {
 		setError("请选择要删除的索引")
 		return
 	}
-	try {
-		isDroppingIndex.value = true
-		clearMessages()
+	await execDropIndex(async () => {
 		unwrapEnvelope(await dropIndexV1(tableId, nameValue))
 		setStatus(`已删除索引 ${nameValue}`)
 		await loadIndexes()
 		dropIndexName.value = ""
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "删除索引失败")
-	} finally {
-		isDroppingIndex.value = false
-	}
+	})
 }
 
 // ── Watchers ───────────────────────────────────────────

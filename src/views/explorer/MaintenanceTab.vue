@@ -1,20 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
+import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
 import { optimizeTableV1, unwrapEnvelope } from "../../lib/tauriClient"
 
-const { activeTableId, setError, setStatus, clearMessages } = useWorkspace()
+const { activeTableId, setError, setStatus } = useWorkspace()
 
 const hasActiveTable = computed(() => Boolean(activeTableId.value))
 
 const compactTargetRows = ref<number | null>(1_000_000)
 const vacuumOlderThanDays = ref<number | null>(7)
-const isCompacting = ref(false)
-const isVacuuming = ref(false)
+const { execute: execCompact, isLoading: isCompacting } = useCommand("Compact 失败")
+const { execute: execVacuum, isLoading: isVacuuming } = useCommand("Vacuum 失败")
 
 async function submitCompactTable() {
 	const tableId = activeTableId.value
-	if (!tableId || isCompacting.value) {
+	if (!tableId) {
 		return
 	}
 	const targetRows = compactTargetRows.value
@@ -22,9 +23,7 @@ async function submitCompactTable() {
 		setError("目标片段行数必须大于 0")
 		return
 	}
-	try {
-		isCompacting.value = true
-		clearMessages()
+	await execCompact(async () => {
 		const response = unwrapEnvelope(
 			await optimizeTableV1({
 				tableId,
@@ -33,16 +32,12 @@ async function submitCompactTable() {
 			})
 		)
 		setStatus(response.summary || "Compact 已完成")
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "Compact 失败")
-	} finally {
-		isCompacting.value = false
-	}
+	})
 }
 
 async function submitVacuumTable() {
 	const tableId = activeTableId.value
-	if (!tableId || isVacuuming.value) {
+	if (!tableId) {
 		return
 	}
 	const olderThanDays = vacuumOlderThanDays.value
@@ -50,9 +45,7 @@ async function submitVacuumTable() {
 		setError("保留天数不能为负数")
 		return
 	}
-	try {
-		isVacuuming.value = true
-		clearMessages()
+	await execVacuum(async () => {
 		const response = unwrapEnvelope(
 			await optimizeTableV1({
 				tableId,
@@ -61,11 +54,7 @@ async function submitVacuumTable() {
 			})
 		)
 		setStatus(response.summary || "Vacuum 已完成")
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "Vacuum 失败")
-	} finally {
-		isVacuuming.value = false
-	}
+	})
 }
 </script>
 

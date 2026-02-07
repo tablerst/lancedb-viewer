@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from "vue"
+import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
 import type { VersionInfoV1 } from "../../ipc/v1"
 import { formatTimestamp } from "../../lib/formatters"
@@ -19,7 +20,6 @@ const {
 	activeTableId,
 	setError,
 	setStatus,
-	clearMessages,
 	refreshSchema,
 	refreshTables,
 } = useWorkspace()
@@ -35,8 +35,9 @@ const isLoadingVersions = ref(false)
 const versionError = ref("")
 const currentVersion = ref<number | null>(null)
 const checkoutVersion = ref<number | null>(null)
-const isCheckingOutVersion = ref(false)
-const isCheckingOutLatest = ref(false)
+const { execute: execCheckoutVersion, isLoading: isCheckingOutVersion } = useCommand("切换版本失败")
+const { execute: execCheckoutLatest, isLoading: isCheckingOutLatest } =
+	useCommand("恢复最新版本失败")
 
 const timelineItems = computed(() =>
 	versions.value.map((v) => {
@@ -89,7 +90,7 @@ async function submitCheckoutVersion() {
 	const profileId = activeProfileId.value
 	const tableId = activeTableId.value
 	const version = checkoutVersion.value
-	if (!profileId || !tableId || isCheckingOutVersion.value) {
+	if (!profileId || !tableId) {
 		return
 	}
 	if (version === null) {
@@ -100,40 +101,28 @@ async function submitCheckoutVersion() {
 		setError("版本号不能为负数")
 		return
 	}
-	try {
-		isCheckingOutVersion.value = true
-		clearMessages()
+	await execCheckoutVersion(async () => {
 		const response = unwrapEnvelope(await checkoutTableVersionV1({ tableId, version }))
 		currentVersion.value = response.version
 		setStatus(`已切换到版本 ${response.version}`)
 		await refreshSchema(profileId)
 		triggerDataRefresh()
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "切换版本失败")
-	} finally {
-		isCheckingOutVersion.value = false
-	}
+	})
 }
 
 async function submitCheckoutLatest() {
 	const profileId = activeProfileId.value
 	const tableId = activeTableId.value
-	if (!profileId || !tableId || isCheckingOutLatest.value) {
+	if (!profileId || !tableId) {
 		return
 	}
-	try {
-		isCheckingOutLatest.value = true
-		clearMessages()
+	await execCheckoutLatest(async () => {
 		const response = unwrapEnvelope(await checkoutTableLatestV1({ tableId }))
 		currentVersion.value = response.version
 		setStatus(`已回到最新版本 ${response.version}`)
 		await refreshSchema(profileId)
 		triggerDataRefresh()
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "恢复最新版本失败")
-	} finally {
-		isCheckingOutLatest.value = false
-	}
+	})
 }
 
 // ── Clone ──────────────────────────────────────────────
@@ -141,13 +130,13 @@ async function submitCheckoutLatest() {
 const cloneTargetName = ref("")
 const cloneSourceVersion = ref<number | null>(null)
 const cloneIsShallow = ref(true)
-const isCloningTable = ref(false)
+const { execute: execCloneTable, isLoading: isCloningTable } = useCommand("克隆表失败")
 
 async function submitCloneTable() {
 	const profileId = activeProfileId.value
 	const currentConnectionId = connectionId.value
 	const tableId = activeTableId.value
-	if (!profileId || !currentConnectionId || !tableId || isCloningTable.value) {
+	if (!profileId || !currentConnectionId || !tableId) {
 		return
 	}
 	const targetName = cloneTargetName.value.trim()
@@ -155,9 +144,7 @@ async function submitCloneTable() {
 		setError("请输入克隆表名")
 		return
 	}
-	try {
-		isCloningTable.value = true
-		clearMessages()
+	await execCloneTable(async () => {
 		const response = unwrapEnvelope(
 			await cloneTableV1({
 				connectionId: currentConnectionId,
@@ -172,11 +159,7 @@ async function submitCloneTable() {
 		cloneSourceVersion.value = null
 		cloneIsShallow.value = true
 		await refreshTables(profileId)
-	} catch (error) {
-		setError(error instanceof Error ? error.message : "克隆表失败")
-	} finally {
-		isCloningTable.value = false
-	}
+	})
 }
 
 // ── Watchers ───────────────────────────────────────────
