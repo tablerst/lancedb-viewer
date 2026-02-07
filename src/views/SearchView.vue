@@ -1,7 +1,8 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
+import { Database, Search } from "lucide-vue-next"
 import type { DataTableColumns, SelectOption } from "naive-ui"
-import { computed, h, ref, watch } from "vue"
-import { useRoute, useRouter } from "vue-router"
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
+import { useRoute } from "vue-router"
 
 import { useWorkspace } from "../composables/workspaceContext"
 import type { SchemaDefinition } from "../ipc/v1"
@@ -10,7 +11,7 @@ import {
 	getConnectionKindLabel,
 	getConnectionKindTagType,
 } from "../lib/connectionKind"
-import { formatCellValue, normalizeRow } from "../lib/formatters"
+import { normalizeRow, renderCellValue } from "../lib/formatters"
 import {
 	combinedSearchV1,
 	ftsSearchV1,
@@ -18,13 +19,12 @@ import {
 	unwrapEnvelope,
 	vectorSearchV1,
 } from "../lib/tauriClient"
+import { compareValues, renderHeader } from "./explorer/explorerShared"
 
 const {
 	profiles,
 	activeProfileId,
 	connectionStates,
-	connectProfile,
-	refreshTables,
 	openTable,
 	setStatus,
 	setError,
@@ -32,7 +32,6 @@ const {
 } = useWorkspace()
 
 const route = useRoute()
-const router = useRouter()
 
 const routeProfileId = computed(() => {
 	const raw = route.params.id
@@ -61,11 +60,6 @@ const scopedTables = computed(() => scopedConnection.value?.tables.value ?? [])
 const scopedActiveTableName = computed(() => scopedConnection.value?.activeTableName.value ?? null)
 const scopedActiveTableId = computed(() => scopedConnection.value?.activeTableId.value ?? null)
 const scopedSchema = computed(() => scopedConnection.value?.schema.value ?? null)
-const scopedIsConnecting = computed(() => scopedConnection.value?.isConnecting.value ?? false)
-const scopedIsRefreshing = computed(() => scopedConnection.value?.isRefreshing.value ?? false)
-const scopedIsOpening = computed(() => scopedConnection.value?.isOpening.value ?? false)
-
-const isLegacySearchRoute = computed(() => route.name === "search")
 
 const connectionKindLabel = computed(() => {
 	const profile = scopedProfile.value
@@ -83,76 +77,19 @@ const connectionKindTagType = computed(() => {
 	return getConnectionKindTagType(getConnectionKind(profile.uri))
 })
 
-const tableHint = computed(() => scopedActiveTableName.value ?? "尚未选择表")
 const hasActiveTable = computed(() => Boolean(scopedActiveTableId.value))
 
 const tableOptions = computed<SelectOption[]>(() =>
 	scopedTables.value.map((item) => ({ label: item.name, value: item.name }))
 )
 
-const selectedTableName = ref<string | null>(null)
-
-watch(
-	() => scopedActiveTableName.value,
-	(next) => {
-		if (!next) {
-			return
-		}
-		if (selectedTableName.value !== next) {
-			selectedTableName.value = next
-		}
-	},
-	{ immediate: true }
-)
-
-async function gotoExplorer() {
+async function onTableSelect(name: string | null) {
 	const id = scopedProfileId.value
-	await router.push(id ? `/connections/${id}` : "/")
-}
-
-async function gotoCredentials() {
-	const id = scopedProfileId.value
-	await router.push(id ? `/connections/${id}/credentials` : "/vault/credentials")
-}
-
-async function switchToConnectionSearch() {
-	const id = scopedProfileId.value
-	if (!id) {
-		return
-	}
-	await router.push(`/connections/${id}/search`)
-}
-
-async function connectCurrent() {
-	const id = scopedProfileId.value
-	if (!id) {
-		return
-	}
-	await connectProfile(id)
-}
-
-async function refreshCurrentTables() {
-	const id = scopedProfileId.value
-	if (!id) {
-		return
-	}
-	await refreshTables(id)
-}
-
-async function openSelectedTable() {
-	const id = scopedProfileId.value
-	const name = selectedTableName.value
-	if (!id || !name) {
-		setError("请先选择要打开的表")
-		return
-	}
-	if (!scopedConnectionId.value) {
-		setError("当前连接未连接")
+	if (!name || !id || !scopedConnectionId.value) {
 		return
 	}
 	clearMessages()
 	await openTable(id, name)
-	setStatus(`已打开表：${name}`)
 }
 
 const allFieldNames = computed(() => scopedSchema.value?.fields.map((field) => field.name) ?? [])
@@ -200,28 +137,6 @@ const resultSchema = ref<SchemaDefinition | null>(null)
 const resultNextOffset = ref<number | null>(null)
 const resultError = ref("")
 
-function renderHeader(title: string) {
-	return h("span", { class: "table-header-ellipsis", title }, title)
-}
-
-function compareValues(a: unknown, b: unknown) {
-	if (a === b) {
-		return 0
-	}
-	if (a === null || a === undefined) {
-		return -1
-	}
-	if (b === null || b === undefined) {
-		return 1
-	}
-	const numA = typeof a === "number" ? a : Number(a)
-	const numB = typeof b === "number" ? b : Number(b)
-	if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
-		return numA - numB
-	}
-	return String(a).localeCompare(String(b))
-}
-
 const resultColumns = computed<DataTableColumns<Record<string, unknown>>>(() => {
 	const fields = resultSchema.value?.fields ?? scopedSchema.value?.fields ?? []
 	return fields.map((field) => ({
@@ -229,7 +144,7 @@ const resultColumns = computed<DataTableColumns<Record<string, unknown>>>(() => 
 		key: field.name,
 		ellipsis: { tooltip: true },
 		sorter: (rowA, rowB) => compareValues(rowA[field.name], rowB[field.name]),
-		render: (row) => formatCellValue(row[field.name]),
+		render: (row) => renderCellValue(row[field.name]),
 	}))
 })
 
@@ -258,6 +173,38 @@ watch(scopedProfileId, () => {
 watch(activeTab, () => {
 	resetResults()
 })
+
+// ── Keyboard shortcuts ─────────────────────────────────
+
+function runActiveQuery() {
+	if (!hasActiveTable.value || isSearching.value) {
+		return
+	}
+	switch (activeTab.value) {
+		case "filter":
+			void runFilterQuery()
+			break
+		case "combined":
+			void runCombinedQuery()
+			break
+		case "vector":
+			void runVectorQuery()
+			break
+		case "fts":
+			void runFtsQuery()
+			break
+	}
+}
+
+function handleKeydown(event: KeyboardEvent) {
+	if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+		event.preventDefault()
+		runActiveQuery()
+	}
+}
+
+onMounted(() => window.addEventListener("keydown", handleKeydown))
+onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown))
 
 function parseVectorInputValue(value: string) {
 	const cleaned = value.replace(/[[\]]/g, " ")
@@ -450,175 +397,109 @@ async function runCombinedQuery() {
 
 <template>
 	<div class="space-y-4">
-		<NCard size="small" title="检索工作台" class="shadow-sm">
-			<div class="space-y-2 text-xs text-slate-500">
-				<div class="flex flex-wrap items-start justify-between gap-2">
-					<div class="min-w-0 space-y-1">
-						<div class="flex items-center gap-2 text-slate-600">
-							<span class="font-medium">当前连接</span>
-							<template v-if="scopedProfile">
-								<span class="max-w-[240px] truncate">{{ scopedProfile.name }}</span>
-								<NTag
-									size="small"
-									:type="connectionKindTagType"
-								>
-									{{ connectionKindLabel ?? "Unknown" }}
-								</NTag>
-								<NTag v-if="scopedIsConnecting" size="small" type="warning">
-									连接中
-								</NTag>
-								<NTag v-else-if="scopedConnectionId" size="small" type="success">
-									已连接
-								</NTag>
-								<NTag v-else size="small" type="default">未连接</NTag>
-							</template>
-							<span v-else>尚未选择连接</span>
-						</div>
-						<div
-							v-if="scopedProfile"
-							class="max-w-[520px] truncate"
-							:title="scopedProfile.uri"
-						>
-							{{ scopedProfile.uri }}
-						</div>
-					</div>
-
-					<div class="flex shrink-0 flex-wrap gap-2">
-						<NButton size="small" secondary @click="gotoExplorer">资源浏览</NButton>
-						<NButton
-							size="small"
-							secondary
-							:disabled="!scopedProfileId"
-							@click="gotoCredentials"
-						>
-							凭证
-						</NButton>
-						<NButton
-							v-if="isLegacySearchRoute && scopedProfileId"
-							size="small"
-							quaternary
-							@click="switchToConnectionSearch"
-						>
-							使用连接级 URL
-						</NButton>
-					</div>
-				</div>
-
-				<div class="flex flex-wrap items-end justify-between gap-2">
-					<div class="flex min-w-[280px] flex-1 items-end gap-2">
-						<div class="flex-1">
-							<label class="text-xs text-slate-500">检索表</label>
-							<NSelect
-								v-model:value="selectedTableName"
-								:options="tableOptions"
-								filterable
-								clearable
-								placeholder="选择要检索的表"
-								size="small"
-								:disabled="!scopedConnectionId"
-								:loading="scopedIsRefreshing"
-							/>
-						</div>
-						<NButton
-							size="small"
-							type="primary"
-							:disabled="!scopedConnectionId || !selectedTableName"
-							:loading="scopedIsOpening"
-							@click="openSelectedTable"
-						>
-							打开
-						</NButton>
-					</div>
-
-					<div class="flex shrink-0 flex-wrap gap-2">
-						<NButton
-							size="small"
-							type="primary"
-							:disabled="!scopedProfileId || Boolean(scopedConnectionId)"
-							:loading="scopedIsConnecting"
-							@click="connectCurrent"
-						>
-							连接
-						</NButton>
-						<NButton
-							size="small"
-							secondary
-							:disabled="!scopedProfileId || !scopedConnectionId"
-							:loading="scopedIsRefreshing"
-							@click="refreshCurrentTables"
-						>
-							刷新表
-						</NButton>
-					</div>
-				</div>
-
-				<div class="text-slate-500">
-					当前表：{{ tableHint }}。
-					<span v-if="!hasActiveTable">请先选择并打开表。</span>
+		<div
+			v-if="!scopedProfileId"
+			class="flex flex-col items-center justify-center gap-3 py-20 text-center"
+		>
+			<div
+				class="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"
+			>
+				<Database class="h-7 w-7" />
+			</div>
+			<div>
+				<div class="text-base font-semibold text-slate-700">选择连接</div>
+				<div class="mt-1 text-sm text-slate-500">
+					请先在侧栏选择连接，再进行检索
 				</div>
 			</div>
-		</NCard>
-
-		<NEmpty
-			v-if="!scopedProfileId"
-			description="请先在左侧选择连接，再进行检索。"
-		>
-			<template #extra>
-				<NButton size="small" secondary @click="gotoExplorer">去资源浏览</NButton>
-			</template>
-		</NEmpty>
-		<NEmpty
+		</div>
+		<div
 			v-else-if="!scopedConnectionId"
-			description="当前连接尚未连接。点击“连接”后再选择表。"
+			class="flex flex-col items-center justify-center gap-3 py-20 text-center"
 		>
-			<template #extra>
-				<div class="flex flex-wrap justify-center gap-2">
-					<NButton
-						size="small"
-						type="primary"
-						:loading="scopedIsConnecting"
-						@click="connectCurrent"
-					>
-						连接
-					</NButton>
-					<NButton size="small" secondary @click="gotoCredentials">
-						检查凭证
-					</NButton>
+			<div
+				class="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-400"
+			>
+				<Database class="h-7 w-7" />
+			</div>
+			<div>
+				<div class="text-base font-semibold text-slate-700">尚未连接</div>
+				<div class="mt-1 text-sm text-slate-500">
+					当前连接尚未建立，请在侧栏中点击连接
 				</div>
-			</template>
-		</NEmpty>
-		<NEmpty
+			</div>
+		</div>
+		<div
 			v-else-if="!hasActiveTable"
-			description="请选择要检索的表，点击“打开”后开始查询。"
+			class="flex flex-col items-center justify-center gap-3 py-20 text-center"
 		>
-			<template #extra>
-				<NButton size="small" secondary @click="gotoExplorer">
-					在资源浏览中打开
-				</NButton>
-			</template>
-		</NEmpty>
+			<div
+				class="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-50 text-sky-400"
+			>
+				<Search class="h-7 w-7" />
+			</div>
+			<div>
+				<div class="text-base font-semibold text-slate-700">选择要检索的表</div>
+				<div class="mt-1 text-sm text-slate-500">
+					从侧栏中选择表，或使用下方快速切换
+				</div>
+			</div>
+			<NSelect
+				v-if="scopedTables.length"
+				:value="scopedActiveTableName"
+				:options="tableOptions"
+				filterable
+				clearable
+				placeholder="快速选择表"
+				size="small"
+				class="mt-2 w-60"
+				@update:value="onTableSelect"
+			/>
+		</div>
 
 		<div v-else class="space-y-4">
+			<div
+				class="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-4 py-2 text-sm"
+			>
+				<div class="flex items-center gap-2 text-slate-600">
+					<span>当前表：</span>
+					<span class="font-medium text-slate-800">{{
+						scopedActiveTableName
+					}}</span>
+					<NTag size="small" :type="connectionKindTagType">
+						{{ scopedProfile?.name }} · {{ connectionKindLabel }}
+					</NTag>
+				</div>
+				<NSelect
+					:value="scopedActiveTableName"
+					:options="tableOptions"
+					filterable
+					size="small"
+					class="w-48"
+					@update:value="onTableSelect"
+				/>
+			</div>
+
 			<NTabs v-model:value="activeTab" type="line">
 				<NTabPane name="filter" tab="过滤查询">
 					<div class="grid gap-3 xl:grid-cols-6">
 						<div class="xl:col-span-3">
-							<label class="text-xs text-slate-500">过滤表达式</label>
+							<label class="text-sm font-medium text-slate-600">过滤表达式</label>
 							<NInput v-model:value="filterExpression" placeholder="id > 10" />
 						</div>
 						<div class="xl:col-span-3 grid grid-cols-2 gap-3">
 							<div>
-								<label class="text-xs text-slate-500">Limit</label>
+								<label class="text-sm font-medium text-slate-600">Limit</label>
 								<NInputNumber v-model:value="filterLimit" :min="1" />
 							</div>
 							<div>
-								<label class="text-xs text-slate-500">Offset</label>
+								<label class="text-sm font-medium text-slate-600">Offset</label>
 								<NInputNumber v-model:value="filterOffset" :min="0" />
 							</div>
 						</div>
 					</div>
 					<div class="mt-3">
-						<label class="text-xs text-slate-500">列投影</label>
+						<label class="text-sm font-medium text-slate-600">列投影</label>
 						<NSelect
 							v-model:value="filterProjection"
 							:options="columnOptions"
@@ -636,17 +517,17 @@ async function runCombinedQuery() {
 				<NTabPane name="combined" tab="组合查询">
 					<div class="grid gap-3 xl:grid-cols-6">
 						<div class="xl:col-span-3">
-							<label class="text-xs text-slate-500">全文查询（可选）</label>
+							<label class="text-sm font-medium text-slate-600">全文查询（可选）</label>
 							<NInput v-model:value="combinedQuery" placeholder="item 1" />
 						</div>
 						<div class="xl:col-span-3">
-							<label class="text-xs text-slate-500">向量输入（可选）</label>
+							<label class="text-sm font-medium text-slate-600">向量输入（可选）</label>
 							<NInput v-model:value="combinedVectorText" placeholder="0.1, 0.2, 0.3" />
 						</div>
 					</div>
 					<div class="mt-3 grid gap-3 xl:grid-cols-6">
 						<div class="xl:col-span-2">
-							<label class="text-xs text-slate-500">向量列</label>
+							<label class="text-sm font-medium text-slate-600">向量列</label>
 							<NSelect
 								v-model:value="combinedVectorColumn"
 								:options="columnOptions"
@@ -654,7 +535,7 @@ async function runCombinedQuery() {
 							/>
 						</div>
 						<div class="xl:col-span-2">
-							<label class="text-xs text-slate-500">全文列</label>
+							<label class="text-sm font-medium text-slate-600">全文列</label>
 							<NSelect
 								v-model:value="combinedColumns"
 								:options="columnOptions"
@@ -663,30 +544,30 @@ async function runCombinedQuery() {
 							/>
 						</div>
 						<div class="xl:col-span-2">
-							<label class="text-xs text-slate-500">Filter</label>
+							<label class="text-sm font-medium text-slate-600">Filter</label>
 							<NInput v-model:value="combinedFilter" placeholder="id > 10" />
 						</div>
 					</div>
 					<div class="mt-3 grid gap-3 xl:grid-cols-6">
 						<div class="xl:col-span-2">
-							<label class="text-xs text-slate-500">Limit</label>
+							<label class="text-sm font-medium text-slate-600">Limit</label>
 							<NInputNumber v-model:value="combinedLimit" :min="1" />
 						</div>
 						<div class="xl:col-span-2">
-							<label class="text-xs text-slate-500">Offset</label>
+							<label class="text-sm font-medium text-slate-600">Offset</label>
 							<NInputNumber v-model:value="combinedOffset" :min="0" />
 						</div>
 						<div class="xl:col-span-1">
-							<label class="text-xs text-slate-500">nprobes</label>
+							<label class="text-sm font-medium text-slate-600">nprobes</label>
 							<NInputNumber v-model:value="combinedNprobes" :min="1" />
 						</div>
 						<div class="xl:col-span-1">
-							<label class="text-xs text-slate-500">refine</label>
+							<label class="text-sm font-medium text-slate-600">refine</label>
 							<NInputNumber v-model:value="combinedRefine" :min="1" />
 						</div>
 					</div>
 					<div class="mt-3">
-						<label class="text-xs text-slate-500">列投影</label>
+						<label class="text-sm font-medium text-slate-600">列投影</label>
 						<NSelect
 							v-model:value="combinedProjection"
 							:options="columnOptions"
@@ -704,12 +585,12 @@ async function runCombinedQuery() {
 				<NTabPane name="vector" tab="向量检索">
 					<div class="grid gap-3 xl:grid-cols-6">
 						<div class="xl:col-span-3">
-							<label class="text-xs text-slate-500">向量输入</label>
+							<label class="text-sm font-medium text-slate-600">向量输入</label>
 							<NInput v-model:value="vectorText" placeholder="0.1, 0.2, 0.3" />
 						</div>
 						<div class="xl:col-span-3 grid grid-cols-2 gap-3">
 							<div>
-								<label class="text-xs text-slate-500">向量列</label>
+								<label class="text-sm font-medium text-slate-600">向量列</label>
 								<NSelect
 									v-model:value="vectorColumn"
 									:options="columnOptions"
@@ -717,31 +598,31 @@ async function runCombinedQuery() {
 								/>
 							</div>
 							<div>
-								<label class="text-xs text-slate-500">Top K</label>
+								<label class="text-sm font-medium text-slate-600">Top K</label>
 								<NInputNumber v-model:value="vectorTopK" :min="1" />
 							</div>
 						</div>
 					</div>
 					<div class="mt-3 grid gap-3 xl:grid-cols-4">
 						<div>
-							<label class="text-xs text-slate-500">Offset</label>
+							<label class="text-sm font-medium text-slate-600">Offset</label>
 							<NInputNumber v-model:value="vectorOffset" :min="0" />
 						</div>
 						<div>
-							<label class="text-xs text-slate-500">nprobes</label>
+							<label class="text-sm font-medium text-slate-600">nprobes</label>
 							<NInputNumber v-model:value="vectorNprobes" :min="1" />
 						</div>
 						<div>
-							<label class="text-xs text-slate-500">refine factor</label>
+							<label class="text-sm font-medium text-slate-600">refine factor</label>
 							<NInputNumber v-model:value="vectorRefine" :min="1" />
 						</div>
 						<div>
-							<label class="text-xs text-slate-500">Filter</label>
+							<label class="text-sm font-medium text-slate-600">Filter</label>
 							<NInput v-model:value="vectorFilter" placeholder="id > 10" />
 						</div>
 					</div>
 					<div class="mt-3">
-						<label class="text-xs text-slate-500">列投影</label>
+						<label class="text-sm font-medium text-slate-600">列投影</label>
 						<NSelect
 							v-model:value="vectorProjection"
 							:options="columnOptions"
@@ -759,23 +640,23 @@ async function runCombinedQuery() {
 				<NTabPane name="fts" tab="全文检索">
 					<div class="grid gap-3 xl:grid-cols-6">
 						<div class="xl:col-span-3">
-							<label class="text-xs text-slate-500">查询文本</label>
+							<label class="text-sm font-medium text-slate-600">查询文本</label>
 							<NInput v-model:value="ftsQuery" placeholder="item 1" />
 						</div>
 						<div class="xl:col-span-3 grid grid-cols-2 gap-3">
 							<div>
-								<label class="text-xs text-slate-500">Limit</label>
+								<label class="text-sm font-medium text-slate-600">Limit</label>
 								<NInputNumber v-model:value="ftsLimit" :min="1" />
 							</div>
 							<div>
-								<label class="text-xs text-slate-500">Offset</label>
+								<label class="text-sm font-medium text-slate-600">Offset</label>
 								<NInputNumber v-model:value="ftsOffset" :min="0" />
 							</div>
 						</div>
 					</div>
 					<div class="mt-3 grid gap-3 xl:grid-cols-2">
 						<div>
-							<label class="text-xs text-slate-500">索引列</label>
+							<label class="text-sm font-medium text-slate-600">索引列</label>
 							<NSelect
 								v-model:value="ftsColumns"
 								:options="columnOptions"
@@ -784,12 +665,12 @@ async function runCombinedQuery() {
 							/>
 						</div>
 						<div>
-							<label class="text-xs text-slate-500">Filter</label>
+							<label class="text-sm font-medium text-slate-600">Filter</label>
 							<NInput v-model:value="ftsFilter" placeholder="id > 10" />
 						</div>
 					</div>
 					<div class="mt-3">
-						<label class="text-xs text-slate-500">列投影</label>
+						<label class="text-sm font-medium text-slate-600">列投影</label>
 						<NSelect
 							v-model:value="ftsProjection"
 							:options="columnOptions"
@@ -809,12 +690,16 @@ async function runCombinedQuery() {
 				{{ resultError }}
 			</NAlert>
 
-			<NCard size="small" title="结果" class="shadow-sm">
+			<NCard size="small" title="结果" class="bg-slate-50/60 shadow-sm">
 				<div class="mb-2 flex items-center justify-between text-xs text-slate-500">
 					<span>返回行数：{{ resultRows.length }}</span>
 					<span v-if="resultNextOffset !== null">nextOffset: {{ resultNextOffset }}</span>
 				</div>
+				<div v-if="isSearching && !resultTableData.length" class="space-y-2 py-4">
+					<NSkeleton text :repeat="6" class="w-full" />
+				</div>
 				<NDataTable
+					v-else
 					class="data-table"
 					size="small"
 					:columns="resultColumns"

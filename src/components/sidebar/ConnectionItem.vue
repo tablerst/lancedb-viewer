@@ -22,6 +22,9 @@ const emit = defineEmits<{
 	(e: "select"): void
 	(e: "open-table", name: string): void
 	(e: "open-menu", event: MouseEvent): void
+	(e: "connect"): void
+	(e: "disconnect"): void
+	(e: "refresh"): void
 }>()
 
 const isConnected = computed(() => Boolean(props.state?.connectionId?.value))
@@ -115,7 +118,7 @@ function handleContextMenu(event: MouseEvent) {
 <template>
 	<NCard
 		size="small"
-		class="group transform-gpu will-change-transform transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out focus-within:border-sky-200"
+		class="group transform-gpu will-change-transform transition-[transform,box-shadow,border-color,background-color,opacity] duration-200 ease-out focus-within:border-sky-200"
 		:class="[
 			selected
 				? 'border-sky-200 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_6px_18px_rgba(14,165,233,0.10)] hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_2px_6px_rgba(15,23,42,0.08),0_12px_26px_rgba(14,165,233,0.16)]'
@@ -125,10 +128,20 @@ function handleContextMenu(event: MouseEvent) {
 					? 'min-h-[84px] bg-sky-50/40 hover:bg-sky-50/60'
 					: 'min-h-[84px] bg-slate-50/40 hover:bg-slate-50/70'
 				: '',
+			!isConnected && !isConnecting && !isDisconnecting ? 'opacity-70 hover:opacity-100' : '',
 		]"
 		:content-style="collapsed ? { padding: '10px 8px' } : undefined"
 		@contextmenu="handleContextMenu"
 	>
+		<!-- V-2: Connected left indicator -->
+		<div
+			v-if="isConnected && !collapsed"
+			class="absolute left-0 top-0 h-full w-[3px] rounded-l-xl bg-sky-400 transition-opacity duration-200"
+		/>
+		<div
+			v-else-if="(isConnecting || isDisconnecting) && !collapsed"
+			class="absolute left-0 top-0 h-full w-[3px] animate-pulse rounded-l-xl bg-amber-400 transition-opacity duration-200"
+		/>
 		<div v-if="collapsed" class="flex flex-col items-center gap-1.5">
 			<button
 				class="group flex w-full flex-col items-center gap-1 rounded-md px-2 py-1.5 text-center transition hover:bg-slate-100/70 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
@@ -196,7 +209,44 @@ function handleContextMenu(event: MouseEvent) {
 
 			<div class="mt-1 text-[11px] text-slate-500">最近连接：{{ lastConnectedLabel }}</div>
 
-			<div class="mt-2 text-[11px] text-slate-400">右键该连接以查看更多操作</div>
+			<!-- I-1: Inline action buttons -->
+			<div class="mt-2 flex items-center gap-2">
+				<template v-if="!isConnected && !isConnecting && !isDisconnecting">
+					<NButton
+						size="tiny"
+						type="primary"
+						@click.stop="emit('connect')"
+					>
+						连接
+					</NButton>
+				</template>
+				<template v-else-if="isConnecting">
+					<NButton size="tiny" type="primary" :loading="true" disabled>
+						连接中
+					</NButton>
+				</template>
+				<template v-else-if="isDisconnecting">
+					<NButton size="tiny" quaternary :loading="true" disabled>
+						断开中
+					</NButton>
+				</template>
+				<template v-else>
+					<NButton
+						size="tiny"
+						secondary
+						@click.stop="emit('refresh')"
+					>
+						刷新
+					</NButton>
+					<NButton
+						size="tiny"
+						quaternary
+						@click.stop="emit('disconnect')"
+					>
+						断开
+					</NButton>
+				</template>
+			</div>
 
 			<div class="mt-3">
 				<div class="flex items-center justify-between text-xs text-slate-500">

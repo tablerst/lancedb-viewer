@@ -32,6 +32,7 @@ export const themeOverrides: GlobalThemeOverrides = {
 		borderColor: "#e2e8f0",
 		borderRadius: "12px",
 		paddingMedium: "20px",
+		titleFontWeight: "600",
 	},
 	Button: {
 		borderRadiusSmall: "8px",

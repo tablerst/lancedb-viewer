@@ -470,6 +470,9 @@ async function handleContextMenuSelect(key: string | number) {
 									@select="onSelectProfile(item.id)"
 									@open-table="(name) => selectAndOpenTable(item.id, name)"
 									@open-menu="(event) => showProfileContextMenu(item, event)"
+									@connect="() => onConnectProfile(item.id)"
+									@disconnect="() => onDisconnectProfile(item.id)"
+									@refresh="() => onRefreshTables(item.id)"
 								/>
 							</div>
 						</template>
@@ -485,6 +488,9 @@ async function handleContextMenuSelect(key: string | number) {
 							@select="onSelectProfile(profile.id)"
 							@open-table="(name) => selectAndOpenTable(profile.id, name)"
 							@open-menu="(event) => showProfileContextMenu(profile, event)"
+							@connect="() => onConnectProfile(profile.id)"
+							@disconnect="() => onDisconnectProfile(profile.id)"
+							@refresh="() => onRefreshTables(profile.id)"
 						/>
 					</div>
 				</template>

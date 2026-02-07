@@ -4,7 +4,7 @@ import CapabilitiesView from "./views/CapabilitiesView.vue"
 import ConnectionCredentialsView from "./views/ConnectionCredentialsView.vue"
 import CredentialsView from "./views/CredentialsView.vue"
 import EditConnectionDialog from "./views/EditConnectionDialog.vue"
-import ExplorerView from "./views/ExplorerView.vue"
+import ExplorerView from "./views/explorer/ExplorerView.vue"
 import NewConnectionDialog from "./views/NewConnectionDialog.vue"
 import SearchView from "./views/SearchView.vue"
 

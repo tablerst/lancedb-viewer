@@ -1,3 +1,5 @@
+import { h, type VNodeChild } from "vue"
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -45,6 +47,49 @@ export function formatCellValue(value: unknown): string {
 	}
 
 	return String(value)
+}
+
+/**
+ * Rich cell renderer – returns VNodes for styled display of special types.
+ * Used in NDataTable `render` functions for better visual presentation.
+ */
+export function renderCellValue(value: unknown): VNodeChild {
+	if (value === null || value === undefined) {
+		return h("span", { class: "text-slate-300 italic select-none" }, "NULL")
+	}
+
+	if (typeof value === "boolean") {
+		return h("span", { class: "select-none" }, value ? "✅" : "❌")
+	}
+
+	if (Array.isArray(value)) {
+		const dim = value.length
+		const previewCount = 4
+		const preview = value
+			.slice(0, previewCount)
+			.map((v) => formatCellValue(v))
+			.join(", ")
+		const suffix = dim > previewCount ? ", …" : ""
+		return h("span", { class: "font-mono text-xs" }, [
+			h("span", { class: "mr-1 text-slate-400" }, `[${dim}d]`),
+			`${preview}${suffix}`,
+		])
+	}
+
+	if (value instanceof Uint8Array) {
+		return h("span", { class: "font-mono text-xs text-slate-400" }, `Binary(${value.length})`)
+	}
+
+	if (typeof value === "object") {
+		try {
+			const json = JSON.stringify(value)
+			return h("span", { class: "font-mono text-xs" }, json)
+		} catch {
+			return h("span", { class: "text-slate-400 italic" }, "[Object]")
+		}
+	}
+
+	return formatCellValue(value)
 }
 
 export function formatTimestamp(value?: string | null): string {

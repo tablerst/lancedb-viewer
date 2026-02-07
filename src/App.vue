@@ -90,6 +90,29 @@ provideWorkspace({
 })
 
 const isDialogRoute = computed(() => route.meta.layout === "dialog")
+const isFullWidthRoute = computed(() => {
+	const name = route.name
+	return (
+		name === "explorer" ||
+		name === "connection-explorer" ||
+		name === "search" ||
+		name === "connection-search"
+	)
+})
+
+/** Select profile and auto-connect if not yet connected. */
+async function selectAndAutoConnect(profileId: string) {
+	await selectProfile(profileId)
+	const state = connectionStates.value[profileId]
+	if (
+		state &&
+		!state.connectionId.value &&
+		!state.isConnecting.value &&
+		!state.isDisconnecting.value
+	) {
+		await connectProfile(profileId)
+	}
+}
 
 watchEffect(() => {
 	const raw = route.params.id
@@ -126,7 +149,7 @@ watchEffect(() => {
 							:profiles="profiles"
 							:active-profile-id="activeProfileId"
 							:connection-states="connectionStates"
-							:on-select-profile="selectProfile"
+							:on-select-profile="selectAndAutoConnect"
 							:on-connect-profile="connectProfile"
 							:on-disconnect-profile="disconnectProfile"
 							:on-refresh-tables="refreshTables"
@@ -134,8 +157,17 @@ watchEffect(() => {
 						/>
 
 						<main class="min-w-0 flex-1 overflow-y-auto">
+							<div v-if="errorMessage" class="px-6 pt-4">
+								<NAlert
+									type="error"
+									closable
+									@close="clearMessages"
+								>
+									{{ errorMessage }}
+								</NAlert>
+							</div>
 							<div class="p-6">
-								<div class="mx-auto w-full max-w-[1400px]">
+								<div :class="isFullWidthRoute ? 'w-full' : 'mx-auto w-full max-w-[1600px]'">
 									<RouterView />
 								</div>
 							</div>

@@ -15,17 +15,19 @@ watch(
 		if (!value || value === previous) {
 			return
 		}
-		message.success(value)
+		message.success(value, { duration: 3500 })
 	}
 )
 
+// Errors are now shown as persistent NAlert in App.vue main area.
+// Keep a subtle toast as secondary indicator only.
 watch(
 	() => props.errorMessage,
 	(value, previous) => {
 		if (!value || value === previous) {
 			return
 		}
-		message.error(value)
+		message.error(value, { duration: 5000 })
 	}
 )
 </script>
