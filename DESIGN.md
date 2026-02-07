@@ -48,17 +48,16 @@
 
 ### 2.2 Explorer 子路由约定
 
-Explorer 各功能 Tab 映射为子路由，支持 URL 直达与浏览器后退：
+Explorer 常驻 Tab 映射为子路由，支持 URL 直达与浏览器后退：
 
 ```
 /connections/:id/table/:name/schema
-/connections/:id/table/:name/data
-/connections/:id/table/:name/write
-/connections/:id/table/:name/import-export
-/connections/:id/table/:name/maintenance
-/connections/:id/table/:name/versions
+/connections/:id/table/:name/data       # 浏览 + 写入合并
 /connections/:id/table/:name/indexes
+/connections/:id/table/:name/versions
 ```
+
+> 低频功能（导入导出、维护）不再映射为独立路由，改为通过 Modal 访问。
 
 ### 2.3 当前落地文件
 
@@ -110,6 +109,11 @@ Naive UI 主题覆盖在 `src/theme/naiveTheme.ts`。
 - 折叠时：
   - 隐藏文字，仅保留图标与关键状态
   - 默认收起表树
+  - 连接卡片使用**首字母圆形图标 + 状态灯**作为主视觉
+  - Hover 显示 Tooltip 信息卡（名称 + URI + 状态 + 表数量）
+  - 选中态增加左侧竖线指示器（与展开态一致）
+  - 去掉连接类型 Tag（改在 Tooltip 中展示）
+  - 卡片最小高度压缩到 `64px`（原 `84px`），提升可见数量
 
 对应实现：`Sidebar.vue` 中 `sidebarWidth`。
 
@@ -203,7 +207,26 @@ Sidebar 由上到下：
 - 成功→ toast，错误→ persistent Alert，进度→ 内联 loading
 - 文案要可行动：尽量提示"选择连接/点击连接按钮"等下一步
 
-### 6.2 内容区宽度约束
+### 6.2 正文区 Sticky Header（固定头部）
+
+右侧正文采用 **Sticky Header** 布局，确保面包屑导航和 Tab 栏始终可见：
+
+```
+<main class="flex flex-col overflow-hidden">
+  ├── Error Alert（固定区域，有错误时显示）
+  ├── Sticky Header（sticky top-0 z-20 bg-white border-b）
+  │     ├── 面包屑（连接名 > 表名）
+  │     └── NTabs（仅 Tab 栏，不含内容）
+  └── Tab Content（flex-1 overflow-y-auto）
+</main>
+```
+
+- 面包屑和 Tab 栏**不随内容滚动**
+- Tab 内容区独立滚动，占满剩余空间
+- 数据表格**不设 `max-h`**，依靠父容器约束自然占满
+- 错误 Alert 位于 Sticky Header 上方，不影响内容区布局
+
+### 6.3 内容区宽度约束
 
 - **数据浏览 / 检索结果**等表格密集页面：**不设 max-width**，让表格占满可用宽度
 - **Schema、凭证、设置**等信息密度低的页面：保留 `max-w-[1600px]` 容器
@@ -213,26 +236,49 @@ Sidebar 由上到下：
 
 ## 7. Explorer（表工作台）规范
 
-### 7.0 组件拆分
+### 7.0 组件拆分与 Tab 精简
 
-ExplorerView 拆分为独立子组件，每个 Tab 一个文件，各组件自管状态与 IPC 调用：
+Explorer Tab 栏从 7 个精简为 **4 个高频 Tab**，低频功能降级为 Modal / 右键菜单入口：
+
+#### 常驻 Tab（4 个）
+| Tab | 路由片段 | 功能 |
+|-----|----------|------|
+| Schema | `schema` | 表结构 + 列操作 |
+| 数据 | `data` | 浏览 + 写入/更新/删除（合并） |
+| 索引 | `indexes` | 索引列表 + 创建 + 删除 |
+| 版本 | `versions` | 版本列表 + 时间旅行 + 克隆 |
+
+#### 降级功能（Modal / 右键菜单）
+| 功能 | 入口 |
+|------|------|
+| 导入数据 | 表右键菜单"导入数据…" → Modal |
+| 导出数据 | 表右键菜单"导出数据…" / 数据 Tab 工具栏按钮 → Modal |
+| 维护（Compact/Vacuum） | 表右键菜单"维护…" → Modal |
+
+#### 目录结构
 
 ```
 src/views/explorer/
-├── ExplorerView.vue           # Tab 容器 + 面包屑 + 打开表管理
+├── ExplorerView.vue           # Sticky Header + Tab 容器 + 面包屑
 ├── SchemaTab.vue              # Schema 展示 + 列操作入口
-├── DataBrowseTab.vue          # Scan + 分页 + 列投影 + 过滤
-├── DataWriteTab.vue           # 写入 / 更新 / 删除（内部子 Tab 或 Accordion）
-├── ImportExportTab.vue        # 导入 + 导出
-├── MaintenanceTab.vue         # Compact + Vacuum
-├── VersionsTab.vue            # 版本列表 + 时间旅行 + 克隆
+├── DataTab.vue                # 数据浏览 + 底部写入/更新/删除操作面板
 ├── IndexesTab.vue             # 索引列表 + 创建 + 删除
+├── VersionsTab.vue            # 版本列表 + 时间旅行 + 克隆
+├── ImportDialog.vue           # 导入 Modal
+├── ExportDialog.vue           # 导出 Modal
+├── MaintenanceDialog.vue      # 维护 Modal（Compact + Vacuum）
+├── CreateTableDialog.vue      # 创建表 Modal（从 ExplorerView 拆出）
+├── RenameTableDialog.vue      # 重命名表 Modal（从 ExplorerView 拆出）
+├── DataResultTable.vue        # 公共数据表格组件（Explorer + Search 复用）
+├── explorerShared.ts          # 共享常量 / 工具函数
 └── composables/
     └── useExplorerTable.ts    # 共享 tableId / schema / reset 逻辑
 ```
 
 每个 Tab 通过 `inject/provide` 或 `props` 获取 `tableId` / `connectionId` / `schema` 等必要上下文。
 Tab 切换/表切换时，由组件生命周期自然重置局部状态，无需在父组件手动清零 50+ 个 ref。
+
+**NTabs 渲染策略**：使用 `display-directive="if"` 按需渲染 Tab 内容，避免所有 Tab 同时挂载导致的不必要 IPC 调用和内存占用。
 
 ### 7.1 Schema Tab
 
@@ -241,25 +287,88 @@ Tab 切换/表切换时，由组件生命周期自然重置局部状态，无需
 - 底部操作区：新增列 / 修改列 / 删除列 按钮
 - **"删除表"操作**放此 Tab 底部或面包屑右侧 `···` 菜单中，不放在数据浏览 Tab
 
-### 7.2 数据浏览 Tab
+### 7.2 数据 Tab（浏览 + 编辑一体化）
 
-查询控制区精简布局：
+采用 **DBeaver 模式**：数据浏览和数据编辑合并为单个"数据"Tab，使用**自定义 DataGrid 组件**（非 NDataTable）。
+
+> 完整设计文档：`dev-docs/DATA_TABLE_REDESIGN.md`
+
+#### 整体布局（自上而下）
 
 ```
-[过滤表达式输入框]                      [查询(primary)]
-列投影: [多选 Select]        [全选(ghost)] [清空(ghost)]
+┌─────────────────────────────────────────────────────────────────┐
+│ 🔧 工具栏  [刷新] [过滤器▾] [高级筛选▾]     [+行] [保存] [导出] │
+├─────────────────────────────────────────────────────────────────┤
+│ ▼ 高级筛选面板（可折叠，默认收起）                                │
+│   过滤表达式 + 列投影选择 + 查询按钮                              │
+├─────────────────────────────────────────────────────────────────┤
+│  列名A ▲ │ 列名B   │ 列名C   │ 列名D          │  ← 表头（可排序）│
+│  [___]   │ [___]   │ [___]   │ [___]          │  ← 过滤器行      │
+├──────────┼─────────┼─────────┼────────────────┤                  │
+│  数据行 1 ...                                  │                  │
+│  数据行 2 ...                                  │                  │
+├─────────────────────────────────────────────────────────────────┤
+│ ◀ 1 ▶ 50/page │ 已加载 50 行 (0.23s) │ 2 行待保存 │  ← 状态栏    │
+├─────────────────────────────────────────────────────────────────┤
+│ ▶ 写入数据 / ▶ 更新数据 / ▶ 删除数据（折叠面板，批量操作入口）    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-- `offset / limit` 整合到分页组件中，不单独显示文字
-- "删除表"等危险操作不在此 Tab 出现
-- 表格宽度不设 max-width，占满可用空间
+#### 核心功能
 
-### 7.3 数据写入 Tab
+1. **表头过滤器行（Header Filter Row）**
+   - 表头下方固定一行输入框，每列一个
+   - 输入过滤条件后按 Enter 触发**后端过滤**（构建 filter expression 发送 `scanV1`）
+   - 支持操作符（`> 5`、`!= "abc"`、`NULL`）、范围（`1..100`）、文本匹配
+   - 多列过滤器用 AND 组合
+   - 可通过工具栏按钮切换显示/隐藏
 
-- "写入/更新/删除"拆为**子 Tab** 或 **Accordion（折叠面板）**，避免同时展示所有表单
-- "删除数据"增加危险标识（红色边框 / 警告条）
-- JSON 写入增加"格式化""校验"辅助按钮
-- 更新/删除成功后自动刷新数据浏览 Tab
+2. **单元格内联编辑**
+   - 双击（或 `F2`）进入编辑模式
+   - 编辑后标记为 dirty（黄色高亮），支持 `Escape` 撤销
+   - 工具栏"保存"按钮批量提交（`updateRowsV1` + `writeRowsV1` + `deleteRowsV1`）
+   - 行定位策略：使用所有标量列值组合构建 filter 定位行
+
+3. **数据刷新**
+   - 工具栏"刷新"按钮 + `F5` 快捷键
+   - 保留当前 offset/limit/filter 状态
+
+4. **高级筛选面板（Advanced Filter Panel）**
+   - 表格上方可折叠面板（默认收起）
+   - 固定在表格内容区顶部（sticky），不遮盖数据
+   - 包含：原始过滤表达式输入、列投影选择
+   - 收起时如有活跃过滤条件，在工具栏用 badge 显示摘要
+
+#### 工具栏按钮
+
+| 左侧 | 右侧 |
+|-------|-------|
+| 刷新（RefreshCcw） | 添加行（Plus） |
+| 过滤器行 toggle（Filter） | 删除行（Trash2） |
+| 高级筛选 toggle（SlidersHorizontal） | 保存（Save） |
+| | 导出（Download） |
+
+#### 底部操作面板（保留）
+
+写入/更新/删除的 NCollapse 面板保留作为**批量操作入口**（JSON 写入、表达式更新、条件删除），位于状态栏下方。
+
+#### 自定义组件目录
+
+```
+src/components/datagrid/
+├── DataGrid.vue              # 核心表格组件
+├── DataGridToolbar.vue       # 工具栏
+├── DataGridHeader.vue        # 表头 + 排序
+├── DataGridFilterRow.vue     # 过滤器行
+├── DataGridBody.vue          # 表体渲染
+├── DataGridCell.vue          # 单元格（展示/编辑双模式）
+├── DataGridStatusBar.vue     # 底部状态栏 + 分页
+├── types.ts                  # 类型定义
+├── useDataGridEditing.ts     # 编辑状态管理
+├── useDataGridFilters.ts     # 过滤器状态管理
+├── useDataGridColumns.ts     # 列定义生成
+└── filterParser.ts           # 列过滤表达式解析
+```
 
 ### 7.4 排序（UI-only）
 
@@ -271,12 +380,34 @@ Tab 切换/表切换时，由组件生命周期自然重置局部状态，无需
 
 > 说明：此策略保证 MVP 能用，但不等价于"全表排序"。当用户需要全表排序时，应升级后端能力或明确提示。
 
-### 7.5 数据表格单元格渲染
+### 7.5 数据表格单元格渲染（DataGrid）
 
-- **Vector 列**：默认折叠显示 `[维度d] val1, val2, …`，hover/click 展示完整值
-- **布尔列**：使用 ✅/❌ 图标
-- **null 值**：`text-slate-300 italic` 样式，显示 `NULL`
-- **长文本**：支持行内展开（点击单元格）
+DataGrid 自定义组件的单元格渲染规范：
+
+- **Vector 列**：默认折叠显示 `[维度d] val1, val2, …`，hover/click 展示完整值；**只读不可编辑**
+- **布尔列**：使用 ✅/❌ 图标；编辑模式为 true/false/null 三态选择
+- **null 值**：`text-slate-300 italic` 样式，显示 `NULL`；编辑时输入 `NULL` 设为 null
+- **长文本**：支持行内展开（点击单元格）；编辑模式为 textarea
+- **数字列**：右对齐显示；编辑模式为 number input
+- **Binary 列**：显示 `Binary(N)`；**只读不可编辑**
+- **dirty 单元格**：黄色底色（`amber-50`）+ 左侧 3px 黄色竖线指示
+- **待删除行**：红色底色 + 删除线 + 半透明
+- **新增行**：绿色底色（`green-50`）
+
+### 7.6 DataGrid 键盘快捷键
+
+| 快捷键 | 操作 |
+|--------|------|
+| `F5` / `Ctrl+R` | 刷新数据 |
+| `Ctrl+Enter` | 执行查询（高级筛选面板内） |
+| `Ctrl+S` | 保存所有更改 |
+| `Escape` | 取消编辑 / 收起面板 |
+| `Enter` | 确认编辑，移到下一行 |
+| `Tab` / `Shift+Tab` | 移到下一/上一列 |
+| `F2` / 双击 | 进入编辑模式 |
+| `Delete` | 标记行待删除 |
+| `Ctrl+Shift+F` | 切换高级筛选面板 |
+| `Ctrl+N` | 添加新行 |
 
 ---
 
@@ -431,36 +562,70 @@ Tab 切换/表切换时，由组件生命周期自然重置局部状态，无需
 
 ## 16. Roadmap（UI 视角）
 
-### Phase 1 — 高影响低风险
+### Phase 1 — 核心体验修复（立即执行）
 
-- ConnectionItem 增加内联操作按钮（连接/断开/刷新）
-- 数据浏览查询区精简 + "删除表"按钮移至 Schema Tab
-- 取消数据页面 `max-width` 限制
-- 错误反馈改为 persistent `NAlert`
-- 表单标签样式升级（`text-sm text-slate-600 font-medium`）
+- ✅ ConnectionItem 增加内联操作按钮（连接/断开/刷新）
+- ✅ 数据浏览查询区精简 + "删除表"按钮移至 Schema Tab
+- ✅ 取消数据页面 `max-width` 限制
+- ✅ 错误反馈改为 persistent `NAlert`
+- ✅ 表单标签样式升级（`text-sm text-slate-600 font-medium`）
+- **面包屑 + Tab 栏固定为 Sticky Header**（最高优先级）
+- **去掉 DataBrowseTab 的 `max-h-[70vh]` 限制**
+- **NTabs 启用 `display-directive="if"` 按需渲染**
 
-### Phase 2 — 结构性优化
+### Phase 2 — 信息架构重组
 
-- ExplorerView 拆分为 7+ 子组件（参见 §7.0）
+- **Tab 精简**：7 个 → 4 个（Schema / 数据 / 索引 / 版本）
+- **数据写入与浏览合并**为单个"数据"Tab（DBeaver 模式）
+- **导入导出改为 Modal**，入口为表右键菜单 + 工具栏按钮
+- **维护（Compact/Vacuum）改为 Modal**，入口为表右键菜单
+- ExplorerView 拆分：创建表 / 重命名表 Modal 独立为子组件
 - 面包屑导航 + 单层 Tab 替代双层 Tab（参见 §2.1）
-- SearchView 精简连接管理 UI，信任 Sidebar 上下文
-- PrimaryNav 改造（增加文字标签或合并到 Sidebar）
-- 视觉层级区分（功能 Tab 图标前缀、区域背景色）
+- 折叠态连接卡片重设计（首字母图标 + Tooltip 信息卡）
+- 表概要信息条（行数 / 版本 / 索引数 / 文件大小）
 
 ### Phase 3 — 体验提升
 
 - 空态/加载态 Skeleton 完善（参见 §12.2）
-- 数据表格单元格渲染优化（Vector/布尔/null 列，参见 §7.5）
-- Explorer Tab 映射为子路由（URL 直达，参见 §2.2）
+- ~~数据表格单元格渲染优化（Vector/布尔/null 列，参见 §7.5）~~ → 由 DataGrid 统一实现
+- ~~**数据表格组件抽取复用**（Explorer + Search 共用 `DataResultTable.vue`）~~ → Explorer 改用 DataGrid
 - 版本时间线可视化（NTimeline 组件）
 - 键盘快捷键（`Ctrl+Enter` 执行查询等）
 - `useCommand` composable 统一 IPC 调用模式（参见 §17）
+- PrimaryNav 优化（收窄到 48px 或合并到 Sidebar）
+- 深色模式预留
+
+### Phase 4 — DataGrid 自定义表格（核心升级）
+
+> 完整设计：`dev-docs/DATA_TABLE_REDESIGN.md`
+
+#### Phase 4a — DataGrid MVP
+- **自定义 DataGrid 组件**替换 DataTab 中的 NDataTable（`src/components/datagrid/`）
+- **表头过滤器行**：每列输入框 → 后端过滤（filter expression 构建）
+- **单元格内联编辑**：双击编辑 + dirty 标记 + 批量保存
+- **统一工具栏**：刷新 / 过滤器 toggle / 添加行 / 保存 / 导出
+- **高级筛选面板**：可折叠式面板，固定在顶部不遮盖表格
+- **底部状态栏**：分页 + 行数统计 + dirty 计数
+- **列宽拖拽调整**
+
+#### Phase 4b — DataGrid 增强
+- 虚拟滚动（大数据集优化）
+- 固定列（左/右 pin）
+- 列头右键菜单（排序/隐藏/筛选）
+- 行选择（多选 checkbox）
+- 复制/粘贴单元格
+
+#### Phase 4c — DataGrid 高级
+- 可视化条件构建器（AND/OR 条件组）
+- 列拖拽排序
+- SearchView 也替换为 DataGrid
+- 单元格条件格式化（样式规则）
 
 ### 持续性目标
 
 - Sidebar 筛选（Local/S3/Remote）+ 全局导航
-- Explorer 补齐 DBeaver 风格能力（列宽/列固定/快捷筛选）
-- Search 复用 Explorer 的结果表格组件
+- ~~Explorer 补齐 DBeaver 风格能力（列宽/列固定/快捷筛选）~~ → 已规划到 Phase 4（DataGrid）
+- Search 复用 DataGrid 组件（Phase 4c）
 - 性能：启用 Arrow IPC（`format: "arrow"`）
 
 ---
@@ -499,16 +664,19 @@ const { execute, isLoading, error } = useCommand(
 
 ### 18.1 Explorer 子路由
 
-Explorer 各功能 Tab 映射为子路由（与 §2.2 对应），支持 URL 直达与浏览器后退：
+Explorer 精简为 4 个常驻 Tab，低频功能通过 Modal 访问（无对应路由）：
 
 ```
+# 常驻 Tab 路由
 /connections/:id/table/:name/schema
-/connections/:id/table/:name/data
-/connections/:id/table/:name/write
-/connections/:id/table/:name/import-export
-/connections/:id/table/:name/maintenance
-/connections/:id/table/:name/versions
+/connections/:id/table/:name/data        # 浏览 + 写入合并
 /connections/:id/table/:name/indexes
+/connections/:id/table/:name/versions
+
+# 已移除的路由（功能改为 Modal 入口）：
+# /connections/:id/table/:name/write          → 合并到 /data
+# /connections/:id/table/:name/import-export  → Modal
+# /connections/:id/table/:name/maintenance    → Modal
 ```
 
 ### 18.2 路由 meta
