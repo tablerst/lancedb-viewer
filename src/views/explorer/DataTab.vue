@@ -102,6 +102,15 @@ async function runScan(queryParams?: Partial<DataGridQueryParams>) {
 	}
 }
 
+// When switching tabs, this component is mounted with an already-selected table.
+// In that case `activeTableId` doesn't change, so the watcher below won't run.
+// Trigger an initial scan on mount to avoid a "no response" empty view.
+onMounted(() => {
+	if (activeTableId.value) {
+		void runScan()
+	}
+})
+
 // ── DataGrid event handlers ────────────────────────────
 
 function handleQuery(params: DataGridQueryParams) {

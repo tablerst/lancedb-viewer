@@ -222,6 +222,20 @@ async function handleDeleteProfile(profileId: string) {
 async function selectAndOpenTable(profileId: string, tableName: string) {
 	await props.onSelectProfile(profileId)
 	await props.onOpenTable(profileId, tableName)
+	// Keep the URL in sync with the selected connection + table.
+	// Without this, the app may stay on "/" (no :id param), and ExplorerView's
+	// inner tab switching (schema/data/indexes/versions) becomes a no-op.
+	await router.push({
+		name: "table-tab",
+		params: { id: profileId, tableName, tab: "schema" },
+	})
+}
+
+async function handleSelectProfile(profileId: string) {
+	await props.onSelectProfile(profileId)
+	// Keep the URL in sync with the selected connection so downstream views can
+	// rely on route params (e.g. :id).
+	await router.push({ name: "connection-explorer", params: { id: profileId } })
 }
 
 function getConnectionFlags(profileId: string) {
@@ -467,7 +481,7 @@ async function handleContextMenuSelect(key: string | number) {
 									:state="connectionStates[item.id] ?? null"
 									:selected="item.id === activeProfileId"
 									:collapsed="isCollapsed"
-									@select="onSelectProfile(item.id)"
+									@select="handleSelectProfile(item.id)"
 									@open-table="(name) => selectAndOpenTable(item.id, name)"
 									@open-menu="(event) => showProfileContextMenu(item, event)"
 									@connect="() => onConnectProfile(item.id)"
@@ -485,7 +499,7 @@ async function handleContextMenuSelect(key: string | number) {
 							:state="connectionStates[profile.id] ?? null"
 							:selected="profile.id === activeProfileId"
 							:collapsed="isCollapsed"
-							@select="onSelectProfile(profile.id)"
+							@select="handleSelectProfile(profile.id)"
 							@open-table="(name) => selectAndOpenTable(profile.id, name)"
 							@open-menu="(event) => showProfileContextMenu(profile, event)"
 							@connect="() => onConnectProfile(profile.id)"
