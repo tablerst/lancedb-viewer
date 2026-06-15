@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tauri WebDriver"
+  short_description: "Inspect and automate real Tauri WebView2 shells."
+  default_prompt: "Use $tauri-webdriver to inspect the real Tauri desktop UI and capture a smoke screenshot."

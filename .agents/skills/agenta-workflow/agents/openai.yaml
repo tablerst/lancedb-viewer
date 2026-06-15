@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agenta Workflow"
+  short_description: "Manage Agenta projects, active version lanes, recovery tasks, closeout, and workflow feedback through MCP or CLI"
+  default_prompt: "Use $agenta-workflow to choose MCP or CLI, align the Agenta project default version to the current implementation lane, organize tasks around recovery/risk/acceptance boundaries, synchronize execution plans, close out work, and submit Agenta workflow feedback when relevant."

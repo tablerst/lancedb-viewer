@@ -1,0 +1,8 @@
+project: lancedb-viewer
+instructions: README.md
+memory_dir: memory
+entry_task_id: 4eb57639-3b2e-4574-b1da-9f5273d794d2
+entry_task_code: LDBREV-00
+feedback_task_id: null
+feedback_task_code: AgentFeedback-00
+feedback_file: null

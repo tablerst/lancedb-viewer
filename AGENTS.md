@@ -1,152 +1,297 @@
 # AGENTS
 
-This repository is a Tauri + Vue 3 + TypeScript desktop app with a Rust backend.
+This repository is **LanceDB Viewer / LanceDB Studio**, a Tauri v2 desktop app
+with a Vue 3 + TypeScript frontend and a Rust backend.
 
-## Stack
-- Frontend: Vue 3, Vite, TypeScript, Biome
-- Desktop: Tauri v2 (Rust backend)
-- Rust deps: tauri, lancedb, serde, log
-- Package manager: use existing lockfile (`bun.lock`)
+Use this file as the operating guide for agents working in this repo. Keep
+changes scoped, validate the touched surface, and prefer current implementation
+over stale plans.
 
-## Repository layout
-- `src/` Vue app
-- `src-tauri/` Tauri Rust backend
-- `public/` static assets
-- `biome.json` formatting/linting config
-- `vite.config.ts` Vite/Tauri dev server config
+## Project Shape
+
+- Frontend: Vue 3.5, Vue Router, TypeScript strict, Vite 6, Naive UI, Tailwind
+  CSS, `lucide-vue-next`.
+- Desktop/backend: Tauri v2, Rust 2021, LanceDB, Arrow, serde, log.
+- Package manager: Bun. Use the existing `bun.lock`; do not install with npm,
+  pnpm, or yarn.
+- App direction: see `README.md` for current capability and `DESIGN.md` for UI
+  information architecture, interaction rules, and visual conventions.
+
+## Repository Layout
+
+- `src/`: Vue application, routes, components, composables, IPC client code.
+- `src-tauri/`: Tauri Rust backend, IPC command handlers, services, tests, and
+  helper binaries.
+- `public/`: static assets served by Vite.
+- `.agents/skills/`: repository-local agent skills and references.
+- `.agenta/`: local Agenta recovery ledger configuration.
+- `.serena/`: Serena project configuration and local memories.
+- `README.md`: product status, dev commands, IPC overview, roadmap.
+- `DESIGN.md`: current UI/UX baseline and checklist.
+- `biome.json`, `vitest.config.ts`, `vite.config.ts`: frontend tooling.
+
+Keep `node_modules/`, `dist/`, `target/`, generated outputs, local caches, and
+personal IDE files out of patches unless the task explicitly targets them.
 
 ## Commands
-Use the project root unless noted.
+
+Run commands from the project root unless noted.
 
 ### Install
-- `bun install` (preferred; lockfile present)
-- Do not use `npm install` / `pnpm install` / `yarn` in this repo (keep `bun.lock` stable)
 
-### Frontend (Vite)
-- `bun dev` start Vite dev server
-- `bun build` typecheck + build (runs `vue-tsc --noEmit`)
-- `bun preview` preview production build
+- `bun install`
 
-### Tauri (desktop)
-- `bun tauri dev` run desktop app in dev mode
-- `bun tauri build` build desktop app
+### Frontend
 
-### Lint/format (Biome)
-- `bun format` format all supported files (writes)
-- `bun lint` lint + auto-fix (writes)
-- `bun check` format + lint (writes)
-- `bun ci` CI check (no writes)
+- `bun dev`: start Vite dev server.
+- `bun build`: run `vue-tsc --noEmit` and build with Vite.
+- `bun preview`: preview the production build.
+- `bun run test`: run Vitest. Use this form to avoid confusion with Bun's own
+  `bun test` behavior.
 
-### Rust backend (`src-tauri`)
+### Tauri
+
+- `bun tauri dev`: run the desktop app in development.
+- `bun tauri build`: build the desktop app.
+
+### Biome
+
+- `bun ci`: read-only CI check. Prefer this when you need diagnostics without
+  modifying files.
+- `bun lint`: lint and apply safe writes.
+- `bun check`: format/lint and apply safe writes.
+- `bun format`: format supported files and write changes.
+
+### Rust
+
 - `cargo build --manifest-path src-tauri/Cargo.toml`
 - `cargo test --manifest-path src-tauri/Cargo.toml`
-- Single test: `cargo test <test_name> --manifest-path src-tauri/Cargo.toml`
+- `cargo test <test_name> --manifest-path src-tauri/Cargo.toml`
+- `cargo run --manifest-path src-tauri/Cargo.toml --bin seed_db -- sample-db`
 
-## Code style
+## Static Analysis Guidelines
+
+- Treat static analysis as evidence for the touched surface, not as a reason to
+  churn unrelated files.
+- Prefer no-write checks first when you only need diagnostics:
+  - Frontend formatting/lint: `bun ci`
+  - Frontend type/build boundary: `bun build`
+  - Rust compile boundary: `cargo build --manifest-path src-tauri/Cargo.toml`
+  - Rust tests/compile diagnostics: `cargo test --manifest-path src-tauri/Cargo.toml`
+- Use write-capable Biome commands (`bun lint`, `bun check`, `bun format`) only
+  when you intend to accept the resulting edits. Inspect the diff afterward and
+  keep unrelated formatting churn out of the final patch.
+- Do not suppress diagnostics with broad rewrites that weaken runtime or IPC
+  contracts. Fix the underlying type, data, or API issue whenever possible.
+- TypeScript is strict. Avoid `any`; use `unknown` at external boundaries and
+  narrow before use.
+- Rust should stay `rustfmt`-compatible and warning-conscious. Avoid
+  `unwrap()`/`expect()` outside startup code and tests.
+
+## Testing Guidelines
+
+- Docs-only changes usually do not need test execution; mention that validation
+  was limited to document review.
+- Frontend behavior or component changes:
+  - Run `bun ci` or `bun lint` for Biome.
+  - Run `bun build` when Vue components, routes, IPC types, or TypeScript
+    contracts changed.
+  - Run `bun run test` when utilities, composables, data transforms, or existing
+    test-covered behavior changed.
+- Rust backend or IPC command changes:
+  - Run `cargo test --manifest-path src-tauri/Cargo.toml`.
+  - Run `cargo build --manifest-path src-tauri/Cargo.toml` when build wiring,
+    features, binaries, or compile-only surfaces changed.
+- Cross-boundary IPC changes:
+  - Update frontend and backend IPC types together.
+  - Run `bun build` and `cargo test --manifest-path src-tauri/Cargo.toml`.
+- Desktop shell or WebView behavior:
+  - Use `bun dev` for browser-only feedback.
+  - Use `bun tauri dev` or the repository `tauri-webdriver` skill when native
+    shell behavior, plugins, dialogs, filesystem access, or screenshots matter.
+- Keep tests deterministic. Prefer temp directories, sample DBs, fakes, and
+  local fixtures over network or shared external resources.
+
+## Dev Docs Usage
+
+- `README.md` is the product and development entry point. Update it when setup,
+  capabilities, IPC behavior, roadmap, or security expectations change.
+- `DESIGN.md` is the active UI/UX baseline. Update it when layout, state model,
+  visual conventions, interaction patterns, or validation checklists change.
+- If `dev_docs/` is introduced or used, treat it as the project working-doc
+  layer:
+  - `dev_docs/exec/`: active design docs, execution plans, acceptance notes, and
+    current tracking.
+  - `dev_docs/archive/`: historical context only; do not treat archive notes as
+    the default source of truth.
+- Prefer updating an existing primary guide before creating parallel docs.
+- Keep docs organized by module/topic, for example `ui`, `ipc`, `backend`,
+  `storage`, `desktop`, or `testing`.
+- Chinese prose is acceptable and preferred for local design/tracking docs when
+  it improves clarity for the maintainers. Keep API names, command names, file
+  paths, type names, error codes, log keys, and external protocol terms in
+  English when that avoids ambiguity.
+- When archiving or moving docs, update nearby indexes and internal links in the
+  same change.
+
+## Agenta Usage
+
+- Agenta is a recovery and closeout ledger, not the default implementation task
+  tracker.
+- When Agenta work is relevant, invoke the repository skill
+  `.agents/skills/agenta-workflow/SKILL.md` and follow its referenced workflow.
+- Use `.agenta/project.yaml` as the current project/recovery entry source before
+  creating or changing projects, versions, tasks, or context manifests.
+- Keep detailed implementation plans and task decomposition in current docs
+  (`README.md`, `DESIGN.md`, or `dev_docs/exec/` when present). Agenta should
+  record lane pointers, reusable findings, validation evidence, risks, and
+  closeout state.
+- Prefer Agenta MCP tools when available and the user has not requested CLI
+  mode.
+- Do not create or update Agenta versions/tasks just because a normal code task
+  exists. First pass the skill's minimalism gate.
+- After any Agenta write, read back the affected project, version, task, note,
+  attachment, or context manifest before reporting completion.
+
+## Repo Memory Governance
+
+- Treat `.agents/memory/repo/` as the repository's Git-backed institutional
+  memory layer if/when it is present. It is for distilled, durable repo
+  knowledge, not scratch notes, chat transcripts, or temporary debugging logs.
+- Treat `/memories/repo/` as an external imported cache or explicit sync target
+  only. If both locations exist, the repository-tracked `.agents/memory/repo/`
+  copy is the source of truth.
+- Current code, tests, `README.md`, and `DESIGN.md` are authoritative. If repo
+  memory conflicts with live implementation, update or retire the memory rather
+  than bending code to stale notes.
+- Do not opportunistically rewrite repo memory during ordinary implementation.
+  If drift is noticed, mention it briefly and wait for an explicit memory
+  maintenance request.
+- For explicit repo-memory cleanup, migration, governance, or index work, read
+  and follow `.agents/skills/repo-memory-curator/SKILL.md`.
+- Keep memory entries schema-aligned with that skill; do not invent ad-hoc
+  labels or naming patterns.
+
+## Serena Usage
+
+- If Serena tools are available, call `serena.activate_project` once for this
+  project before substantive work unless it is already active.
+- Read the Serena Instructions Manual once per context before using Serena for
+  project work.
+- Prefer Serena symbolic tools for code exploration and edits when they fit the
+  task. Use normal shell reads for non-code docs and configs.
+- Use Serena memories when they are likely to contain relevant repo conventions,
+  command guidance, prior architecture decisions, or task completion rules.
+- Keep Serena memories distinct from repo memory: Serena memories are local
+  agent working context; `.agents/memory/repo/` is durable repo knowledge.
+
+## SubAgent Usage
+
+- Treat requests to use or parallelize with SubAgents, including vague wording
+  like "结合 SubAgent 并行推进", as permission to split execution work when it is
+  safe and useful.
+- Before delegating substantial work, identify the critical path and independent
+  workstreams. Keep urgent, tightly coupled, or high-risk edits local.
+- Delegate bounded implementation, exploration, or verification slices with
+  clear ownership and non-overlapping write scopes.
+- Prefer implementation workers for well-scoped paths/modules and explorer
+  workers when the boundary is unclear or discovery is the main value.
+- Prompts to SubAgents should state owned paths, expected output, relevant
+  assumptions, validation commands, and whether edits are allowed.
+- Reuse an existing SubAgent only when the follow-up stays within the same
+  bounded context; otherwise spawn a new narrowly scoped one.
+
+## Coding Style
+
 ### General
-- Commits in English; present tense.
+
+- Commit messages should use Conventional Commits style:
+  `feat(scope): concise English summary`.
+- Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`,
+  `ci`, `style`, `perf`.
+- Use a meaningful lowercase scope when it helps identify the touched area, for
+  example `feat(ipc): add scan projection options` or
+  `docs(agents): clarify validation rules`.
+- Keep commit summaries in English, present tense, and without a trailing
+  period.
+- Code comments should be in English unless the touched doc already uses Chinese
+  prose.
 - Prefer small, focused commits and functions.
 - Keep user-visible errors friendly and actionable.
-- Avoid new dependencies without a good reason.
+- Avoid new dependencies without a clear reason.
+- Prefer current code and tests over stale docs. If docs are stale, update the
+  docs as part of the change or call out the drift.
 
 ### TypeScript / Vue
-- Use `<script setup lang="ts">` in SFCs.
-- Prefer Composition API (`ref`, `computed`, `watchEffect`) over Options API.
-- Keep state minimal; derive when possible.
-- Avoid `any`; use `unknown` and narrow.
-- `tsconfig.json` is `strict: true` — keep types explicit.
-- Prefer `const` over `let` unless reassignment is required.
-- Prefer template strings over string concatenation.
-- Import order: external packages, then internal modules, then relative files.
-- Prefer named exports for utilities; default exports for Vue components.
-- Components: PascalCase file names, kebab-case for DOM components in templates.
-- Keep templates readable; avoid deeply nested markup.
-- When calling Tauri, use `invoke` from `@tauri-apps/api/core`.
-- Always handle `invoke` errors (`try/catch`) and surface them to UI.
-- For async work, prefer `await` over `.then()` chains.
 
-### Formatting (Biome)
-- Indentation: tabs.
-- Line width: 100.
-- Quotes: double.
-- Semicolons: as needed.
-- Trailing commas: ES5.
-- Imports are auto-organized; do not disable.
-- `src-tauri/` is excluded from Biome.
+- Use `<script setup lang="ts">` in Vue SFCs.
+- Use Composition API (`ref`, `computed`, `watch`, `watchEffect`) over Options
+  API unless an existing file clearly requires otherwise.
+- Keep state minimal and derive with `computed` when possible.
+- Keep templates declarative; move non-trivial branching or transforms into
+  script/composables.
+- Use typed props/emits for child components. Prefer props down, events up.
+- Split large components into focused components and composables when the file
+  owns multiple independent UI sections or side-effect-heavy logic.
+- Prefer named exports for utilities and default exports for Vue components.
+- Component files use PascalCase; DOM component names in templates use
+  kebab-case.
+- Imports are managed by Biome. Prefer external packages first, then internal
+  modules, then relative files.
 
-### Rust (`src-tauri`)
-- Use rustfmt defaults (4-space indentation).
-- Naming: `snake_case` for functions/modules, `CamelCase` for types, `SCREAMING_SNAKE_CASE` for consts.
-- Prefer `Result<T, E>` and `?` for error propagation.
-- Avoid `unwrap()`/`expect()` outside of `main`/startup.
-- Log with the `log` crate macros (`info!`, `warn!`, `error!`).
-- Use `serde` for IPC types passed between frontend and backend.
-- Keep Tauri commands thin; move logic into helpers/services.
-- Tauri commands should return `Result<T, String>` or a serializable error.
-- Prefer non-blocking work for long tasks; consider background threads/events.
+### Tauri IPC / Data Handling
 
-## Testing guidance
-- No JS test runner configured yet; add one only if needed.
-- Rust tests live in `src-tauri/` with standard `cargo test` flow.
-- Keep unit tests deterministic; avoid network access by default.
-
-## Build notes
-- Vite dev server runs on port 1420; HMR on 1421 in Tauri dev.
-- Tauri build uses the Vite build output.
-
-## Security & secrets
-- Do not hardcode secrets in `src/` or `src-tauri/`.
-- Prefer OS keychain/secure storage for credentials if added later.
-
-## Rules from tooling
-- No Cursor rules (`.cursor/rules/`) or `.cursorrules` found.
-- No `.github/copilot-instructions.md` found.
-
-## Suggested workflow
-1. `bun install`
-2. `bun dev` for frontend-only changes.
-3. `bun tauri dev` for desktop integration.
-4. After frontend changes, run `bun lint` or `bun check` to catch issues early.
-
-## When editing
-- Keep changes scoped; avoid reformatting unrelated files.
-- Update types when adding new fields or IPC payloads.
-- After frontend code changes, promptly run `bun lint` or `bun check` and fix issues before moving on.
-- If you add new commands, document them and keep names stable.
-- If you add new env vars, document them in README and sample files.
-
-## File templates
-- Vue component: `<script setup lang="ts">` + `<template>` + optional `<style scoped>`.
-- Rust command: `#[tauri::command] async fn ... -> Result<_, String>`.
-
-## Notes
-- This repo uses ES modules (`"type": "module"`).
-- Keep `node_modules/` out of patches.
-- Keep the lockfile consistent with the package manager used.
-
-## UI conventions
-- Keep layout responsive; use CSS classes and avoid inline styles.
-- Use semantic HTML elements.
-- Keep forms accessible with labels and ARIA when needed.
-- Prefer small reusable components for repeated UI.
-- Keep assets in `src/assets/` or `public/` as appropriate.
-
-## Imports and paths
-- Prefer relative imports within `src/` unless aliases are added.
-- Avoid circular dependencies between components.
-- Group related utilities in dedicated modules.
-
-## IPC/data handling
+- Use `invoke` from `@tauri-apps/api/core` on the frontend.
+- Always handle `invoke` errors with `try/catch` and surface actionable UI
+  feedback.
+- Keep IPC payloads versionable with additive changes where possible.
 - Validate inputs on both frontend and backend.
-- Avoid sending large blobs via JSON; prefer streaming/structured formats if needed.
-- Keep payloads versionable (additive changes when possible).
+- Avoid sending large blobs via JSON when a structured or streaming format is
+  available. Arrow IPC exists for larger scan payloads.
+- Cross-boundary type changes should update matching frontend and Rust types in
+  the same patch.
 
-## Rust safety
-- Prefer explicit lifetimes only when required; keep signatures simple.
-- Use `clippy` recommendations when available.
-- Treat `panic!` as a bug; replace with errors.
+### Rust
+
+- Use rustfmt defaults.
+- Naming: `snake_case` for functions/modules, `CamelCase` for types,
+  `SCREAMING_SNAKE_CASE` for constants.
+- Prefer `Result<T, E>` and `?` for error propagation.
+- Tauri commands should stay thin and return `Result<T, String>` or a
+  serializable error envelope.
+- Move reusable backend logic into helpers/services rather than command bodies.
+- Log with `log` macros (`info!`, `warn!`, `error!`).
+- Treat `panic!` as a bug outside startup/test-only code.
+
+## UI Conventions
+
+- Follow `DESIGN.md` for current layout and visual decisions.
+- The main information architecture is a collapsible left sidebar plus a right
+  workspace.
+- Use Naive UI for complex controls, Tailwind for layout/spacing/light styling,
+  and Lucide for icons.
+- Keep UI responsive and semantic. Prefer accessible labels, keyboard focus, and
+  clear loading/empty/error states.
+- Avoid inline styles unless a dynamic value is clearer than a class.
+- Keep repeated UI in small reusable components.
+- Do not add decorative animation or large reflow-heavy transitions to data
+  tables. Keep motion small and purposeful.
+
+## Security
+
+- Do not hardcode secrets in `src/` or `src-tauri/`.
+- Prefer Stronghold or OS-backed secure storage for credentials.
+- Store only `secret_ref` and safe metadata in connection profiles.
+- Sanitize logs and user-facing errors so credentials, tokens, and local private
+  paths are not exposed unnecessarily.
 
 ## Housekeeping
-- Update `README.md` when adding new setup steps.
-- Keep `PLAN.md` as design doc; update when scope changes.
+
 - Keep files encoded in UTF-8.
+- Keep changes scoped; avoid reformatting unrelated files.
+- Update `README.md` when adding setup steps, commands, env vars, capabilities,
+  or operational requirements.
+- Update `DESIGN.md` when UI architecture, interaction contracts, or validation
+  checklists change.
+- If new commands, IPC endpoints, or env vars are added, document them in the
+  same change.
