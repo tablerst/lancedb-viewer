@@ -13,12 +13,12 @@ use tempfile::tempdir;
 
 use lancedb_viewer_lib::ipc::v1::{
     AddColumnsRequestV1, AlterColumnsRequestV1, ColumnAlterationInput, ConnectProfile,
-    ConnectRequestV1, CreateIndexRequestV1, CreateTableRequestV1, DataFormat,
-    DeleteRowsRequestV1, DropColumnsRequestV1, DropIndexRequestV1, DropTableRequestV1, ErrorCode,
-    FieldDataType, FtsSearchRequestV1, GetSchemaRequestV1, IndexTypeV1,
-    ListIndexesRequestV1, ListTablesRequestV1, OpenTableRequestV1, QueryFilterRequestV1,
-    ScanRequestV1, SchemaDefinitionInput, SchemaFieldInput, UpdateColumnInputV1,
-    UpdateRowsRequestV1, VectorSearchRequestV1, WriteDataMode, WriteRowsRequestV1,
+    ConnectRequestV1, CreateIndexRequestV1, CreateTableRequestV1, DataFormat, DeleteRowsRequestV1,
+    DropColumnsRequestV1, DropIndexRequestV1, DropTableRequestV1, ErrorCode, FieldDataType,
+    FtsSearchRequestV1, GetSchemaRequestV1, IndexTypeV1, ListIndexesRequestV1, ListTablesRequestV1,
+    OpenTableRequestV1, QueryFilterRequestV1, ScanRequestV1, SchemaDefinitionInput,
+    SchemaFieldInput, UpdateColumnInputV1, UpdateRowsRequestV1, VectorSearchRequestV1,
+    WriteDataMode, WriteRowsRequestV1,
 };
 use lancedb_viewer_lib::services::v1 as services_v1;
 use lancedb_viewer_lib::state::AppState;
@@ -273,7 +273,11 @@ async fn create_table_and_schema_evolution() {
     )
     .await;
 
-    assert!(created.ok, "create_table should succeed: {:?}", created.error);
+    assert!(
+        created.ok,
+        "create_table should succeed: {:?}",
+        created.error
+    );
     let created = created.data.expect("create table data");
 
     let added = services_v1::add_columns_v1(
@@ -296,7 +300,11 @@ async fn create_table_and_schema_evolution() {
     assert!(added.ok, "add_columns should succeed: {:?}", added.error);
     let added = added.data.expect("add_columns data");
     assert!(
-        added.schema.fields.iter().any(|field| field.name == "notes"),
+        added
+            .schema
+            .fields
+            .iter()
+            .any(|field| field.name == "notes"),
         "expected notes column to be added"
     );
 
@@ -315,7 +323,11 @@ async fn create_table_and_schema_evolution() {
     )
     .await;
 
-    assert!(altered.ok, "alter_columns should succeed: {:?}", altered.error);
+    assert!(
+        altered.ok,
+        "alter_columns should succeed: {:?}",
+        altered.error
+    );
     let altered = altered.data.expect("alter_columns data");
     assert!(
         altered
@@ -343,7 +355,11 @@ async fn create_table_and_schema_evolution() {
     )
     .await;
 
-    assert!(dropped.ok, "drop_columns should succeed: {:?}", dropped.error);
+    assert!(
+        dropped.ok,
+        "drop_columns should succeed: {:?}",
+        dropped.error
+    );
     let dropped = dropped.data.expect("drop_columns data");
     assert!(
         !dropped
@@ -364,7 +380,11 @@ async fn create_table_and_schema_evolution() {
     )
     .await;
 
-    assert!(cleanup.ok, "cleanup drop_table should succeed: {:?}", cleanup.error);
+    assert!(
+        cleanup.ok,
+        "cleanup drop_table should succeed: {:?}",
+        cleanup.error
+    );
 }
 
 #[tokio::test]
@@ -395,11 +415,16 @@ async fn write_update_delete_rows() {
                 column: "text".to_string(),
                 expr: "'updated'".to_string(),
             }],
+            allow_full_table: false,
         },
     )
     .await;
 
-    assert!(updated.ok, "update_rows should succeed: {:?}", updated.error);
+    assert!(
+        updated.ok,
+        "update_rows should succeed: {:?}",
+        updated.error
+    );
     let updated = updated.data.expect("update rows data");
     assert!(updated.rows_updated >= 1);
 
@@ -408,11 +433,105 @@ async fn write_update_delete_rows() {
         DeleteRowsRequestV1 {
             table_id: harness.table_id.clone(),
             filter: "id = 999".to_string(),
+            allow_full_table: false,
         },
     )
     .await;
 
-    assert!(deleted.ok, "delete_rows should succeed: {:?}", deleted.error);
+    assert!(
+        deleted.ok,
+        "delete_rows should succeed: {:?}",
+        deleted.error
+    );
+}
+
+#[tokio::test]
+async fn update_delete_rows_reject_broad_mutations_without_opt_in() {
+    let harness = create_command_harness().await;
+
+    let update_without_filter = services_v1::update_rows_v1(
+        &harness.state,
+        UpdateRowsRequestV1 {
+            table_id: harness.table_id.clone(),
+            filter: None,
+            updates: vec![UpdateColumnInputV1 {
+                column: "text".to_string(),
+                expr: "'unsafe'".to_string(),
+            }],
+            allow_full_table: false,
+        },
+    )
+    .await;
+
+    assert!(!update_without_filter.ok);
+    assert_eq!(
+        update_without_filter
+            .error
+            .as_ref()
+            .map(|error| &error.code),
+        Some(&ErrorCode::InvalidArgument)
+    );
+
+    let update_with_trivial_filter = services_v1::update_rows_v1(
+        &harness.state,
+        UpdateRowsRequestV1 {
+            table_id: harness.table_id.clone(),
+            filter: Some("1 = 1".to_string()),
+            updates: vec![UpdateColumnInputV1 {
+                column: "text".to_string(),
+                expr: "'unsafe'".to_string(),
+            }],
+            allow_full_table: false,
+        },
+    )
+    .await;
+
+    assert!(!update_with_trivial_filter.ok);
+    assert_eq!(
+        update_with_trivial_filter
+            .error
+            .as_ref()
+            .map(|error| &error.code),
+        Some(&ErrorCode::InvalidArgument)
+    );
+
+    let delete_without_filter = services_v1::delete_rows_v1(
+        &harness.state,
+        DeleteRowsRequestV1 {
+            table_id: harness.table_id.clone(),
+            filter: " ".to_string(),
+            allow_full_table: false,
+        },
+    )
+    .await;
+
+    assert!(!delete_without_filter.ok);
+    assert_eq!(
+        delete_without_filter
+            .error
+            .as_ref()
+            .map(|error| &error.code),
+        Some(&ErrorCode::InvalidArgument)
+    );
+
+    let delete_with_trivial_filter = services_v1::delete_rows_v1(
+        &harness.state,
+        DeleteRowsRequestV1 {
+            table_id: harness.table_id.clone(),
+            filter: "true".to_string(),
+            allow_full_table: false,
+        },
+    )
+    .await;
+
+    assert!(!delete_with_trivial_filter.ok);
+    assert_eq!(
+        delete_with_trivial_filter
+            .error
+            .as_ref()
+            .map(|error| &error.code),
+        Some(&ErrorCode::InvalidArgument)
+    );
 }
 
 #[tokio::test]
@@ -432,7 +551,11 @@ async fn scan_json_and_arrow() {
     )
     .await;
 
-    assert!(scan_page1.ok, "scan json should succeed: {:?}", scan_page1.error);
+    assert!(
+        scan_page1.ok,
+        "scan json should succeed: {:?}",
+        scan_page1.error
+    );
     let scan_page1 = scan_page1.data.expect("scan data");
     assert_eq!(scan_page1.next_offset, Some(2));
     match scan_page1.chunk {
@@ -453,7 +576,11 @@ async fn scan_json_and_arrow() {
     )
     .await;
 
-    assert!(scan_arrow.ok, "scan arrow should succeed: {:?}", scan_arrow.error);
+    assert!(
+        scan_arrow.ok,
+        "scan arrow should succeed: {:?}",
+        scan_arrow.error
+    );
     let scan_arrow = scan_arrow.data.expect("scan arrow");
     assert_eq!(scan_arrow.next_offset, Some(3));
 
@@ -489,7 +616,11 @@ async fn query_filter_vector_search_and_fts() {
     )
     .await;
 
-    assert!(filtered.ok, "query_filter should succeed: {:?}", filtered.error);
+    assert!(
+        filtered.ok,
+        "query_filter should succeed: {:?}",
+        filtered.error
+    );
     let filtered = filtered.data.expect("filtered data");
     match filtered.chunk {
         lancedb_viewer_lib::ipc::v1::DataChunk::Json(chunk) => {
@@ -514,7 +645,11 @@ async fn query_filter_vector_search_and_fts() {
     )
     .await;
 
-    assert!(vector_ok.ok, "vector_search should succeed: {:?}", vector_ok.error);
+    assert!(
+        vector_ok.ok,
+        "vector_search should succeed: {:?}",
+        vector_ok.error
+    );
     let vector_ok = vector_ok.data.expect("vector data");
     match vector_ok.chunk {
         lancedb_viewer_lib::ipc::v1::DataChunk::Json(chunk) => {
@@ -587,7 +722,11 @@ async fn list_create_drop_indexes() {
     )
     .await;
 
-    assert!(created.ok, "create_index should succeed: {:?}", created.error);
+    assert!(
+        created.ok,
+        "create_index should succeed: {:?}",
+        created.error
+    );
 
     let listed_after = services_v1::list_indexes_v1(
         &harness.state,
@@ -692,5 +831,8 @@ async fn validates_error_conditions() {
     .await;
 
     assert!(!missing_schema.ok);
-    assert_eq!(missing_schema.error.expect("error").code, ErrorCode::NotFound);
+    assert_eq!(
+        missing_schema.error.expect("error").code,
+        ErrorCode::NotFound
+    );
 }

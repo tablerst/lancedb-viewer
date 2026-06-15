@@ -2,7 +2,7 @@
 
 基于 Tauri v2 + Vue 3 + Rust 的 LanceDB 桌面可视化工具。当前版本以 JSON 为主的 IPC v1 打通连接与 Schema 预览，同时保留后续 Arrow IPC 的扩展位。
 
-近期目标：重构前端信息架构为“**左侧可收缩侧边栏 + 右侧正文工作区**”，支持**多连接并行**、列表虚拟化，并用 TailwindCSS（CSS Transition/Animation）/Lucide 提升交互与视觉一致性。
+近期目标：重构前端信息架构为“**深色全局主导航 + 可收缩连接侧边栏 + 右侧正文工作区**”，支持**多连接并行**、列表虚拟化，并用 TailwindCSS（CSS Transition/Animation）/Lucide 提升交互与视觉一致性。
 
 ## 当前能力
 
@@ -17,9 +17,12 @@
 
 ## UI 重构（进行中）
 
-规划中的交互形态：
+当前交互形态：
 
-- 左侧 Sidebar（可收缩）：
+- 深色 PrimaryNav：
+	- 固定图标导航：资源浏览、检索、凭证库、能力地图
+	- 当前路由使用左侧细线与浅色底标记
+- 连接 Sidebar（可收缩）：
 	- 顶部快捷操作：筛选（Local/S3/Remote 等）、新建连接（Modal）
 	- 连接项卡片：状态灯、连接类型 Tag、展开表树
 	- 列表虚拟化：连接列表/表列表在规模增大时保持流畅
@@ -49,11 +52,11 @@
 ## 开发
 
 - 安装依赖：`bun install`
-- 前端开发：`bun dev`
+- 前端开发：`bun run dev`
 - 桌面联调：`bun tauri dev`
 - 运行测试：`bun run test`（避免与 Bun 内置 `bun test` 语义混淆）
-- 代码格式化：`bun format`
-- 前端代码调整完成后：及时运行 `bun lint` 或 `bun check` 查看是否有错误（需要纯检查可用 `bun ci`）
+- 代码格式化：`bun run format`
+- 前端代码调整完成后：及时运行 `bun run lint` 或 `bun run check` 查看是否有错误（需要纯检查可用 `bun run ci`）
 
 ### Rust 后端测试
 

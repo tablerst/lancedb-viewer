@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repo Memory Curator"
+  short_description: "Curate durable repository memory notes"
+  default_prompt: "Use $repo-memory-curator to curate memories/repo and update the repository memory index."

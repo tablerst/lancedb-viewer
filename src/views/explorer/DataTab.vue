@@ -144,7 +144,7 @@ async function handleSave(changeset: DataGridChangeset) {
 
 		// Process deletes
 		for (const deleteFilter of changeset.deleted) {
-			unwrapEnvelope(await deleteRowsV1(tableId, deleteFilter))
+			unwrapEnvelope(await deleteRowsV1({ tableId, filter: deleteFilter }))
 		}
 
 		const total = changeset.updated.length + changeset.inserted.length + changeset.deleted.length
@@ -205,7 +205,7 @@ async function handleBatchDelete(filter: string) {
 	const tableId = activeTableId.value
 	if (!activeProfileId.value || !tableId) return
 	await execDeleteRows(async () => {
-		unwrapEnvelope(await deleteRowsV1(tableId, filter))
+		unwrapEnvelope(await deleteRowsV1({ tableId, filter }))
 		setStatus("删除操作已提交")
 		showBatchDelete.value = false
 		triggerDataRefresh()

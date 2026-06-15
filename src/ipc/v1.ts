@@ -267,6 +267,7 @@ export interface UpdateRowsRequestV1 {
 	tableId: string
 	filter?: string
 	updates: UpdateColumnInputV1[]
+	allowFullTable?: boolean
 }
 
 export interface UpdateRowsResponseV1 {
@@ -278,6 +279,7 @@ export interface UpdateRowsResponseV1 {
 export interface DeleteRowsRequestV1 {
 	tableId: string
 	filter: string
+	allowFullTable?: boolean
 }
 
 export interface DeleteRowsResponseV1 {

@@ -439,6 +439,8 @@ pub struct UpdateRowsRequestV1 {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filter: Option<String>,
     pub updates: Vec<UpdateColumnInputV1>,
+    #[serde(default)]
+    pub allow_full_table: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -454,6 +456,8 @@ pub struct UpdateRowsResponseV1 {
 pub struct DeleteRowsRequestV1 {
     pub table_id: String,
     pub filter: String,
+    #[serde(default)]
+    pub allow_full_table: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

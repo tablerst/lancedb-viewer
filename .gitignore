@@ -25,3 +25,4 @@ dist-ssr
 /PLAN.md
 /sample-db/
 dev-docs
+target/rust-analyzer/flycheck0/
