@@ -561,6 +561,7 @@ async function runCombinedQuery() {
 
 		<NEmpty
 			v-if="!scopedProfileId"
+			class="app-workspace-empty"
 			description="请先在左侧选择连接，再进行检索。"
 		>
 			<template #extra>
@@ -569,6 +570,7 @@ async function runCombinedQuery() {
 		</NEmpty>
 		<NEmpty
 			v-else-if="!scopedConnectionId"
+			class="app-workspace-empty"
 			description="当前连接尚未连接。点击“连接”后再选择表。"
 		>
 			<template #extra>
@@ -589,6 +591,7 @@ async function runCombinedQuery() {
 		</NEmpty>
 		<NEmpty
 			v-else-if="!hasActiveTable"
+			class="app-workspace-empty"
 			description="请选择要检索的表，点击“打开”后开始查询。"
 		>
 			<template #extra>

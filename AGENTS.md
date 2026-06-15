@@ -14,7 +14,7 @@ over stale plans.
 - Desktop/backend: Tauri v2, Rust 2021, LanceDB, Arrow, serde, log.
 - Package manager: Bun. Use the existing `bun.lock`; do not install with npm,
   pnpm, or yarn.
-- App direction: see `README.md` for current capability and `DESIGN.md` for UI
+- App direction: see `README.md` for current capability and `UI_DESIGN.md` for UI
   information architecture, interaction rules, and visual conventions.
 
 ## Repository Layout
@@ -27,7 +27,7 @@ over stale plans.
 - `.agenta/`: local Agenta recovery ledger configuration.
 - `.serena/`: Serena project configuration and local memories.
 - `README.md`: product status, dev commands, IPC overview, roadmap.
-- `DESIGN.md`: current UI/UX baseline and checklist.
+- `UI_DESIGN.md`: current UI/UX baseline and checklist.
 - `biome.json`, `vitest.config.ts`, `vite.config.ts`: frontend tooling.
 
 Keep `node_modules/`, `dist/`, `target/`, generated outputs, local caches, and
@@ -43,9 +43,9 @@ Run commands from the project root unless noted.
 
 ### Frontend
 
-- `bun dev`: start Vite dev server.
-- `bun build`: run `vue-tsc --noEmit` and build with Vite.
-- `bun preview`: preview the production build.
+- `bun run dev`: start Vite dev server.
+- `bun run build`: run `vue-tsc --noEmit` and build with Vite.
+- `bun run preview`: preview the production build.
 - `bun run test`: run Vitest. Use this form to avoid confusion with Bun's own
   `bun test` behavior.
 
@@ -56,11 +56,11 @@ Run commands from the project root unless noted.
 
 ### Biome
 
-- `bun ci`: read-only CI check. Prefer this when you need diagnostics without
+- `bun run ci`: read-only CI check. Prefer this when you need diagnostics without
   modifying files.
-- `bun lint`: lint and apply safe writes.
-- `bun check`: format/lint and apply safe writes.
-- `bun format`: format supported files and write changes.
+- `bun run lint`: lint and apply safe writes.
+- `bun run check`: format/lint and apply safe writes.
+- `bun run format`: format supported files and write changes.
 
 ### Rust
 
@@ -74,11 +74,11 @@ Run commands from the project root unless noted.
 - Treat static analysis as evidence for the touched surface, not as a reason to
   churn unrelated files.
 - Prefer no-write checks first when you only need diagnostics:
-  - Frontend formatting/lint: `bun ci`
-  - Frontend type/build boundary: `bun build`
+  - Frontend formatting/lint: `bun run ci`
+  - Frontend type/build boundary: `bun run build`
   - Rust compile boundary: `cargo build --manifest-path src-tauri/Cargo.toml`
   - Rust tests/compile diagnostics: `cargo test --manifest-path src-tauri/Cargo.toml`
-- Use write-capable Biome commands (`bun lint`, `bun check`, `bun format`) only
+- Use write-capable Biome commands (`bun run lint`, `bun run check`, `bun run format`) only
   when you intend to accept the resulting edits. Inspect the diff afterward and
   keep unrelated formatting churn out of the final patch.
 - Do not suppress diagnostics with broad rewrites that weaken runtime or IPC
@@ -93,8 +93,8 @@ Run commands from the project root unless noted.
 - Docs-only changes usually do not need test execution; mention that validation
   was limited to document review.
 - Frontend behavior or component changes:
-  - Run `bun ci` or `bun lint` for Biome.
-  - Run `bun build` when Vue components, routes, IPC types, or TypeScript
+  - Run `bun run ci` or `bun run lint` for Biome.
+  - Run `bun run build` when Vue components, routes, IPC types, or TypeScript
     contracts changed.
   - Run `bun run test` when utilities, composables, data transforms, or existing
     test-covered behavior changed.
@@ -104,9 +104,9 @@ Run commands from the project root unless noted.
     features, binaries, or compile-only surfaces changed.
 - Cross-boundary IPC changes:
   - Update frontend and backend IPC types together.
-  - Run `bun build` and `cargo test --manifest-path src-tauri/Cargo.toml`.
+  - Run `bun run build` and `cargo test --manifest-path src-tauri/Cargo.toml`.
 - Desktop shell or WebView behavior:
-  - Use `bun dev` for browser-only feedback.
+  - Use `bun run dev` for browser-only feedback.
   - Use `bun tauri dev` or the repository `tauri-webdriver` skill when native
     shell behavior, plugins, dialogs, filesystem access, or screenshots matter.
 - Keep tests deterministic. Prefer temp directories, sample DBs, fakes, and
@@ -116,7 +116,7 @@ Run commands from the project root unless noted.
 
 - `README.md` is the product and development entry point. Update it when setup,
   capabilities, IPC behavior, roadmap, or security expectations change.
-- `DESIGN.md` is the active UI/UX baseline. Update it when layout, state model,
+- `UI_DESIGN.md` is the active UI/UX baseline. Update it when layout, state model,
   visual conventions, interaction patterns, or validation checklists change.
 - If `dev_docs/` is introduced or used, treat it as the project working-doc
   layer:
@@ -143,7 +143,7 @@ Run commands from the project root unless noted.
 - Use `.agenta/project.yaml` as the current project/recovery entry source before
   creating or changing projects, versions, tasks, or context manifests.
 - Keep detailed implementation plans and task decomposition in current docs
-  (`README.md`, `DESIGN.md`, or `dev_docs/exec/` when present). Agenta should
+  (`README.md`, `UI_DESIGN.md`, or `dev_docs/exec/` when present). Agenta should
   record lane pointers, reusable findings, validation evidence, risks, and
   closeout state.
 - Prefer Agenta MCP tools when available and the user has not requested CLI
@@ -161,7 +161,7 @@ Run commands from the project root unless noted.
 - Treat `/memories/repo/` as an external imported cache or explicit sync target
   only. If both locations exist, the repository-tracked `.agents/memory/repo/`
   copy is the source of truth.
-- Current code, tests, `README.md`, and `DESIGN.md` are authoritative. If repo
+- Current code, tests, `README.md`, and `UI_DESIGN.md` are authoritative. If repo
   memory conflicts with live implementation, update or retire the memory rather
   than bending code to stale notes.
 - Do not opportunistically rewrite repo memory during ordinary implementation.
@@ -265,9 +265,9 @@ Run commands from the project root unless noted.
 
 ## UI Conventions
 
-- Follow `DESIGN.md` for current layout and visual decisions.
-- The main information architecture is a collapsible left sidebar plus a right
-  workspace.
+- Follow `UI_DESIGN.md` for current layout and visual decisions.
+- The main information architecture is a dark global primary nav, a collapsible
+  connection sidebar, and a right workspace.
 - Use Naive UI for complex controls, Tailwind for layout/spacing/light styling,
   and Lucide for icons.
 - Keep UI responsive and semantic. Prefer accessible labels, keyboard focus, and
@@ -291,7 +291,7 @@ Run commands from the project root unless noted.
 - Keep changes scoped; avoid reformatting unrelated files.
 - Update `README.md` when adding setup steps, commands, env vars, capabilities,
   or operational requirements.
-- Update `DESIGN.md` when UI architecture, interaction contracts, or validation
+- Update `UI_DESIGN.md` when UI architecture, interaction contracts, or validation
   checklists change.
 - If new commands, IPC endpoints, or env vars are added, document them in the
   same change.

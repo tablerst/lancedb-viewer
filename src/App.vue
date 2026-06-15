@@ -116,7 +116,7 @@ watchEffect(() => {
 		<NMessageProvider>
 			<NDialogProvider>
 				<StatusMessageBridge :status-message="statusMessage" :error-message="errorMessage" />
-				<div class="h-screen w-screen overflow-hidden bg-slate-50">
+				<div class="h-screen w-screen overflow-hidden bg-[var(--app-surface)]">
 					<div v-if="isDialogRoute" class="h-full w-full">
 						<RouterView />
 					</div>
@@ -133,8 +133,8 @@ watchEffect(() => {
 							:on-open-table="openTable"
 						/>
 
-						<main class="min-w-0 flex-1 overflow-y-auto">
-							<div class="p-6">
+						<main class="min-w-0 flex-1 overflow-y-auto bg-[var(--app-surface)]">
+							<div class="p-5">
 								<div class="mx-auto w-full max-w-[1400px]">
 									<RouterView />
 								</div>

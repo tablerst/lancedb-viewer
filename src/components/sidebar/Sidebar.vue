@@ -91,6 +91,9 @@ const shouldVirtualize = computed(() => isCollapsed.value && filteredProfiles.va
 
 const sidebarWidth = computed(() => (isCollapsed.value ? collapsedWidth : expandedWidth))
 const virtualItemSize = computed(() => (isCollapsed.value ? collapsedItemSize : 92))
+const connectionCountLabel = computed(
+	() => `${filteredProfiles.value.length} / ${props.profiles.length}`
+)
 
 onMounted(async () => {
 	try {
@@ -369,7 +372,7 @@ async function handleContextMenuSelect(key: string | number) {
 
 <template>
 	<aside
-		class="relative flex h-full shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 ease-out"
+		class="relative flex h-full shrink-0 flex-col border-r border-[var(--app-rule)] bg-[var(--app-surface-panel)] transition-[width] duration-200 ease-out"
 		:style="{ width: sidebarWidth }"
 	>
 		<NDropdown
@@ -401,7 +404,7 @@ async function handleContextMenuSelect(key: string | number) {
 				circle
 				:aria-label="isCollapsed ? '展开侧边栏' : '收起侧边栏'"
 				:title="isCollapsed ? '展开侧边栏' : '收起侧边栏'"
-				class="bg-white shadow-sm ring-1 ring-slate-200 transition hover:ring-slate-300"
+				class="border border-[var(--app-rule)] bg-[var(--app-surface-panel)] shadow-[var(--app-shadow-whisper)] hover:bg-slate-50"
 				@click="toggleCollapse"
 			>
 				<ChevronRight v-if="isCollapsed" class="h-4 w-4" />
@@ -409,48 +412,53 @@ async function handleContextMenuSelect(key: string | number) {
 			</NButton>
 		</div>
 
-		<div class="border-b border-slate-100 px-4 py-3" :class="isCollapsed ? 'px-3' : 'px-4'">
+		<div class="border-b border-[var(--app-rule)] px-4 py-3" :class="isCollapsed ? 'px-3' : 'px-4'">
 			<div
 				class="flex"
 				:class="isCollapsed ? 'flex-col items-center gap-2' : 'items-start justify-between gap-3'"
 			>
-				<div v-if="!isCollapsed" class="min-w-0 space-y-0.5">
-					<div class="text-sm font-semibold leading-tight text-slate-900">连接</div>
-					<div class="text-xs leading-snug text-slate-500">选择连接后浏览表 / 配置凭证</div>
+				<div v-if="!isCollapsed" class="min-w-0 space-y-1">
+					<div class="flex items-center gap-2">
+						<div class="text-sm font-semibold leading-tight text-slate-950">连接</div>
+						<span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+							{{ connectionCountLabel }}
+						</span>
+					</div>
+					<div class="text-xs leading-snug text-slate-500">连接、凭证与表上下文</div>
 				</div>
 
 				<div class="flex gap-2" :class="isCollapsed ? 'flex-col items-center' : 'items-center pt-0.5'">
-				<NPopover trigger="click" placement="bottom-start">
-					<template #trigger>
-						<NButton size="small" quaternary>
-							<Filter class="h-4 w-4" />
-							<span v-if="!isCollapsed" class="ml-2">筛选</span>
-						</NButton>
-					</template>
-					<div class="w-56 space-y-2 p-2">
-						<div class="text-xs font-medium text-slate-700">连接类型</div>
-						<NRadioGroup v-model:value="filterKind" size="small">
-							<div class="filter-radio-grid grid grid-cols-2 gap-2 p-0.5">
-								<NRadioButton value="all">全部</NRadioButton>
-								<NRadioButton value="local">{{ getConnectionKindLabel("local") }}</NRadioButton>
-								<NRadioButton value="s3">{{ getConnectionKindLabel("s3") }}</NRadioButton>
-								<NRadioButton value="remote">{{ getConnectionKindLabel("remote") }}</NRadioButton>
-								<NRadioButton value="gcs">{{ getConnectionKindLabel("gcs") }}</NRadioButton>
-								<NRadioButton value="azure">{{ getConnectionKindLabel("azure") }}</NRadioButton>
-							</div>
-						</NRadioGroup>
-					</div>
-				</NPopover>
+					<NPopover trigger="click" placement="bottom-start">
+						<template #trigger>
+							<NButton size="small" secondary>
+								<Filter class="h-4 w-4" />
+								<span v-if="!isCollapsed" class="ml-2">筛选</span>
+							</NButton>
+						</template>
+						<div class="w-56 space-y-2 p-2">
+							<div class="text-xs font-medium text-slate-700">连接类型</div>
+							<NRadioGroup v-model:value="filterKind" size="small">
+								<div class="filter-radio-grid grid grid-cols-2 gap-2 p-0.5">
+									<NRadioButton value="all">全部</NRadioButton>
+									<NRadioButton value="local">{{ getConnectionKindLabel("local") }}</NRadioButton>
+									<NRadioButton value="s3">{{ getConnectionKindLabel("s3") }}</NRadioButton>
+									<NRadioButton value="remote">{{ getConnectionKindLabel("remote") }}</NRadioButton>
+									<NRadioButton value="gcs">{{ getConnectionKindLabel("gcs") }}</NRadioButton>
+									<NRadioButton value="azure">{{ getConnectionKindLabel("azure") }}</NRadioButton>
+								</div>
+							</NRadioGroup>
+						</div>
+					</NPopover>
 
-				<NButton size="small" type="primary" @click.stop="openCreateDialog">
-					<Plus class="h-4 w-4" />
-					<span v-if="!isCollapsed" class="ml-2">新建</span>
-				</NButton>
+					<NButton size="small" type="primary" @click.stop="openCreateDialog">
+						<Plus class="h-4 w-4" />
+						<span v-if="!isCollapsed" class="ml-2">新建</span>
+					</NButton>
 				</div>
 			</div>
 		</div>
 
-		<div class="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-4">
+		<div class="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-3">
 			<div class="min-h-0 flex-1 overflow-y-auto">
 				<NEmpty v-if="!filteredProfiles.length" description="暂无连接档案" />
 				<template v-else>
@@ -460,7 +468,7 @@ async function handleContextMenuSelect(key: string | number) {
 						:item-size="virtualItemSize"
 					>
 						<template #default="{ item }">
-							<div class="pb-3">
+							<div class="pb-2">
 								<ConnectionItem
 									:key="item.id"
 									:profile="item"
@@ -474,7 +482,7 @@ async function handleContextMenuSelect(key: string | number) {
 							</div>
 						</template>
 					</NVirtualList>
-					<div v-else class="space-y-3">
+					<div v-else class="space-y-2">
 						<ConnectionItem
 							v-for="profile in filteredProfiles"
 							:key="profile.id"
@@ -496,11 +504,11 @@ async function handleContextMenuSelect(key: string | number) {
 
 <style scoped>
 .filter-radio-grid {
-	overflow: visible;	
+	overflow: visible;
 }
 
 .filter-radio-grid :deep(.n-radio-button) {
-	border-radius: 8px !important;	
+	border-radius: 8px !important;
 }
 
 .filter-radio-grid :deep(.n-radio-button:not(:first-child)) {

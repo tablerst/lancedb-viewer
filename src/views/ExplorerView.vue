@@ -1618,11 +1618,28 @@ function handlePageSizeChange(nextSize: number) {
 
 <template>
 	<div class="space-y-4">
-		<NEmpty v-if="!canManageTables" description="请先连接数据库" />
+		<NEmpty
+			v-if="!canManageTables"
+			class="app-workspace-empty"
+			description="连接数据库后开始浏览表"
+		>
+			<template #extra>
+				<div class="max-w-sm text-center text-xs leading-5 text-slate-500">
+					在左侧选择一个连接档案，右键可连接、配置凭证或创建表。
+				</div>
+			</template>
+		</NEmpty>
 		<NEmpty
 			v-else-if="!hasOpenTables"
-			description="选择表以查看详情（右键连接可创建表）"
-		/>
+			class="app-workspace-empty"
+			description="打开一张表以查看 Schema 和数据"
+		>
+			<template #extra>
+				<div class="max-w-sm text-center text-xs leading-5 text-slate-500">
+					在左侧连接卡片中展开表列表，或右键当前连接创建新表。
+				</div>
+			</template>
+		</NEmpty>
 		<NTabs v-else-if="hasOpenTables" v-model:value="activeTableTab" type="line">
 			<NTabPane
 				v-for="table in openedTables"

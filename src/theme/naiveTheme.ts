@@ -2,10 +2,10 @@ import type { GlobalThemeOverrides } from "naive-ui"
 
 export const themeOverrides: GlobalThemeOverrides = {
 	common: {
-		primaryColor: "#38bdf8",
-		primaryColorHover: "#7dd3fc",
-		primaryColorPressed: "#0ea5e9",
-		primaryColorSuppl: "#38bdf8",
+		primaryColor: "#0284c7",
+		primaryColorHover: "#0369a1",
+		primaryColorPressed: "#075985",
+		primaryColorSuppl: "#0284c7",
 		successColor: "#14b8a6",
 		successColorHover: "#2dd4bf",
 		successColorPressed: "#0f766e",
@@ -15,35 +15,35 @@ export const themeOverrides: GlobalThemeOverrides = {
 		warningColor: "#f59e0b",
 		warningColorHover: "#fbbf24",
 		warningColorPressed: "#d97706",
-		borderRadius: "10px",
+		borderRadius: "8px",
 		fontFamily: '"Inter", "Noto Sans SC", system-ui, sans-serif',
 		textColor1: "#0f172a",
 		textColor2: "#334155",
 		textColor3: "#64748b",
-		bodyColor: "#f8fafc",
+		bodyColor: "#f6f8fb",
 	},
 	Layout: {
-		color: "#f1f5f9",
-		headerColor: "#f8fafc",
-		siderColor: "#f8fafc",
+		color: "#f6f8fb",
+		headerColor: "#f6f8fb",
+		siderColor: "#f6f8fb",
 	},
 	Card: {
-		color: "#ffffff",
-		borderColor: "#e2e8f0",
-		borderRadius: "12px",
-		paddingMedium: "20px",
+		color: "#fbfdff",
+		borderColor: "#dbe3ee",
+		borderRadius: "8px",
+		paddingMedium: "16px",
 	},
 	Button: {
 		borderRadiusSmall: "8px",
-		borderRadiusMedium: "10px",
+		borderRadiusMedium: "8px",
 	},
 	Input: {
-		borderRadius: "10px",
+		borderRadius: "8px",
 	},
 	DataTable: {
-		borderRadius: "10px",
+		borderRadius: "8px",
 	},
 	Tag: {
-		borderRadius: "8px",
+		borderRadius: "6px",
 	},
 }

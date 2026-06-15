@@ -115,24 +115,25 @@ function handleContextMenu(event: MouseEvent) {
 <template>
 	<NCard
 		size="small"
-		class="group transform-gpu will-change-transform transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out focus-within:border-sky-200"
+		class="group transition-[border-color,background-color,box-shadow] duration-150 ease-out focus-within:border-sky-300"
 		:class="[
 			selected
-				? 'border-sky-200 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_6px_18px_rgba(14,165,233,0.10)] hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_2px_6px_rgba(15,23,42,0.08),0_12px_26px_rgba(14,165,233,0.16)]'
-				: 'hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md',
+				? 'border-sky-300 bg-sky-50/70 shadow-[var(--app-shadow-whisper)]'
+				: 'border-slate-200 bg-[var(--app-surface-panel)] hover:border-slate-300 hover:bg-slate-50/80',
 			collapsed
 				? selected
-					? 'min-h-[84px] bg-sky-50/40 hover:bg-sky-50/60'
-					: 'min-h-[84px] bg-slate-50/40 hover:bg-slate-50/70'
+					? 'min-h-[84px]'
+					: 'min-h-[84px]'
 				: '',
 		]"
-		:content-style="collapsed ? { padding: '10px 8px' } : undefined"
+		:content-style="collapsed ? { padding: '10px 8px' } : { padding: '12px' }"
 		@contextmenu="handleContextMenu"
 	>
 		<div v-if="collapsed" class="flex flex-col items-center gap-1.5">
 			<button
-				class="group flex w-full flex-col items-center gap-1 rounded-md px-2 py-1.5 text-center transition hover:bg-slate-100/70 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+				class="group flex w-full flex-col items-center gap-1 rounded-md px-2 py-1.5 text-center transition-colors hover:bg-slate-100/70 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
 				:title="collapsedTitle"
+				:aria-label="collapsedTitle"
 				@click="emit('select')"
 			>
 				<div class="flex items-center gap-1.5">
@@ -161,17 +162,21 @@ function handleContextMenu(event: MouseEvent) {
 			<div class="flex items-start justify-between gap-3">
 				<button
 					class="flex min-w-0 flex-1 rounded-md text-left focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+					:aria-label="`选择连接 ${profile.name}`"
 					@click="emit('select')"
 				>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-center gap-2">
 							<span class="h-2 w-2 rounded-full" :class="statusDotClass" />
 							<div
-								class="truncate text-sm font-semibold text-slate-800"
+								class="truncate text-sm font-semibold text-slate-900"
 								:title="profile.name"
 							>
 								{{ profile.name }}
 							</div>
+							<span class="text-[11px] font-medium" :class="statusTextClass">
+								{{ statusText }}
+							</span>
 						</div>
 						<div class="truncate text-xs text-slate-500" :title="profile.uri">
 							{{ profile.uri }}
@@ -190,13 +195,14 @@ function handleContextMenu(event: MouseEvent) {
 					>
 						<MoreHorizontal class="h-4 w-4" />
 					</NButton>
-					<NTag size="small" :type="tagType">{{ kindLabel }}</NTag>
+					<NTag size="small" :type="tagType" :bordered="false">{{ kindLabel }}</NTag>
 				</div>
 			</div>
 
-			<div class="mt-1 text-[11px] text-slate-500">最近连接：{{ lastConnectedLabel }}</div>
-
-			<div class="mt-2 text-[11px] text-slate-400">右键该连接以查看更多操作</div>
+			<div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+				<span>最近连接：{{ lastConnectedLabel }}</span>
+				<span class="text-slate-400">右键更多操作</span>
+			</div>
 
 			<div class="mt-3">
 				<div class="flex items-center justify-between text-xs text-slate-500">
@@ -216,10 +222,10 @@ function handleContextMenu(event: MouseEvent) {
 					</div>
 				</div>
 				<div
-					class="mt-2 overflow-hidden rounded-lg bg-slate-50/70 transition-[height] duration-200 ease-out"
+					class="mt-2 overflow-hidden rounded-md border border-slate-200/70 bg-white/70 transition-[height] duration-200 ease-out"
 					:style="{ height: `${tableListContainerHeight}px` }"
 				>
-					<div v-if="isConnected" class="border-l border-slate-200/80 pl-2">
+					<div v-if="isConnected" class="px-1 py-1">
 						<NVirtualList
 							:items="tables"
 							:item-size="32"

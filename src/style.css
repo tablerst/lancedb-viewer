@@ -4,6 +4,21 @@
 
 :root {
 	color-scheme: light;
+	--app-surface: #f6f8fb;
+	--app-surface-panel: #fbfdff;
+	--app-surface-panel-muted: #f1f5f9;
+	--app-rule: #dbe3ee;
+	--app-ink: #0f172a;
+	--app-muted: #64748b;
+	--app-accent: #0284c7;
+	--app-accent-soft: #e0f2fe;
+	--app-nav: #0b1220;
+	--app-nav-muted: #94a3b8;
+	--app-focus: #0ea5e9;
+	--app-radius-sm: 6px;
+	--app-radius-md: 8px;
+	--app-radius-lg: 10px;
+	--app-shadow-whisper: 0 1px 2px rgb(15 23 42 / 0.05);
 }
 
 html,
@@ -13,5 +28,49 @@ body,
 }
 
 body {
-	@apply bg-slate-50 text-slate-900 antialiased;
+	@apply text-slate-900 antialiased;
+	background: var(--app-surface);
+}
+
+button,
+input,
+textarea,
+select {
+	font: inherit;
+}
+
+.app-workspace-empty {
+	min-height: calc(100vh - 48px);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	padding: 128px 24px 24px;
+	color: var(--app-muted);
+}
+
+.app-workspace-empty .n-empty__icon {
+	color: #94a3b8;
+}
+
+.app-workspace-empty .n-empty__description {
+	margin-top: 10px;
+	font-size: 14px;
+	font-weight: 600;
+	color: #475569;
+}
+
+.app-workspace-empty .n-empty__extra {
+	margin-top: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 150ms;
+		animation-iteration-count: 1;
+		transition-duration: 150ms;
+		scroll-behavior: auto;
+	}
 }

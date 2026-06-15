@@ -77,17 +77,18 @@ function navigate(to: string) {
 </script>
 
 <template>
-	<aside class="flex h-full w-14 shrink-0 flex-col border-r border-slate-200 bg-white">
-		<div class="flex items-center justify-center p-3">
+	<aside class="flex h-full w-16 shrink-0 flex-col border-r border-slate-950 bg-[var(--app-nav)]">
+		<div class="flex items-center justify-center border-b border-white/10 p-3">
 			<div
-				class="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-500 text-white"
+				class="flex h-9 w-9 items-center justify-center rounded-md border border-sky-400/20 bg-sky-500/15 text-sky-200"
 				title="LanceDB Studio"
+				aria-label="LanceDB Studio"
 			>
 				<Database class="h-5 w-5" />
 			</div>
 		</div>
 
-		<div class="flex flex-1 flex-col items-center gap-2 px-2 pb-4">
+		<nav class="flex flex-1 flex-col items-center gap-1.5 px-2 py-4" aria-label="主导航">
 			<NButton
 				v-for="item in items"
 				:key="item.key"
@@ -95,14 +96,21 @@ function navigate(to: string) {
 				quaternary
 				circle
 				:title="item.label"
+				:aria-label="item.label"
 				:class="[
-					isActive(item.key) ? 'text-sky-600 bg-sky-50/80' : 'text-slate-600',
-					'hover:bg-slate-50',
+					isActive(item.key)
+						? 'bg-white/[0.12] text-white ring-1 ring-white/10'
+						: 'text-slate-400 hover:bg-white/[0.08] hover:text-slate-100',
+					'relative',
 				]"
 				@click="navigate(item.to)"
 			>
+				<span
+					v-if="isActive(item.key)"
+					class="absolute -left-2 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-sky-300"
+				/>
 				<component :is="item.icon" class="h-4 w-4" />
 			</NButton>
-		</div>
+		</nav>
 	</aside>
 </template>

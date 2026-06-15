@@ -1,4 +1,4 @@
-# DESIGN.md
+# UI_DESIGN.md
 
 本文件定义 **LanceDB Studio** 前端的标准 UI 规范与信息架构，用于：
 
@@ -33,17 +33,20 @@
 
 ## 2. 信息架构（IA）
 
-整体布局采用“**左侧可收缩侧边栏 + 右侧正文工作区**”。
+整体布局采用“**深色全局主导航 + 可收缩连接侧边栏 + 右侧正文工作区**”。
 
-- 左侧 Sidebar：以连接管理为主（含表树）；全局导航后续补齐（Explorer/Search）
+- PrimaryNav：固定深色图标导航，用于 Explorer / Search / Vault / Capabilities 等全局路由切换
+- Sidebar：以连接管理为主（含表树、筛选、新建入口），承载当前数据上下文
 - 右侧正文：按当前路由展示 Explorer / Search 等工作台
 
 当前落地文件：
 
 - Layout Shell：`src/App.vue`
+- PrimaryNav：`src/components/layout/PrimaryNav.vue`
 - Sidebar：`src/components/sidebar/Sidebar.vue`
 - 连接项卡片：`src/components/sidebar/ConnectionItem.vue`
 - Explorer：`src/views/ExplorerView.vue`
+- Search：`src/views/SearchView.vue`
 
 ---
 
@@ -51,22 +54,35 @@
 
 ### 3.1 主题与颜色
 
-Naive UI 主题覆盖在 `src/theme/naiveTheme.ts`。
+Naive UI 主题覆盖在 `src/theme/naiveTheme.ts`，应用级设计 token 在 `src/style.css`。
 
-- 主色（Primary）：`#38bdf8`（sky-400）
+- 主色（Primary）：`#0284c7`
+- 主导航背景：`#0b1220`
 - 成功（Success）：`#14b8a6`
 - 警告（Warning）：`#f59e0b`
 - 错误（Error）：`#ef4444`
-- 背景：`#f8fafc`
+- 应用背景：`#f6f8fb`
+- 面板背景：`#fbfdff`
+- 分隔线：`#dbe3ee`
 - 文本：`#0f172a/#334155/#64748b`
+
+颜色使用原则：
+
+- 桌面数据工具应保持安静、清晰、可扫描；避免营销式渐变、装饰色块和大面积单一高饱和色
+- 强调色只用于当前导航、主按钮、选中连接、焦点与关键状态，不用于普通装饰
 
 ### 3.2 圆角与卡片
 
-- 全局圆角：`10px`
-- 卡片：白底 + 轻边框（`#e2e8f0`）+ 圆角 `12px`
-- 阴影：默认尽量克制（可无阴影）；仅在 **hover/selected** 等需要强调层级时使用轻量阴影
-  - 选中态允许加入“主题色微光”（glow shadow）以表达悬浮
-  - 避免在同一元素上叠加 `ring-*` 与 `shadow-*`（`ring` 基于 box-shadow，易在圆角与抗锯齿处产生混色/脏边）
+- 全局圆角：`8px`
+- 小标签/小控件圆角：`6px`
+- 卡片：`#fbfdff` 面板底 + `#dbe3ee` 轻边框 + `8px` 圆角
+- 阴影：默认无明显阴影，仅在需要分层时使用极轻阴影（例如 `--app-shadow-whisper`）
+- 选中态：优先使用边框、浅色背景和状态文案，不依赖 glow shadow 或大幅 hover 位移
+
+约束：
+
+- 避免大圆角卡片、强投影、主题色微光和“漂浮卡片”叠加；这类样式会削弱桌面工具的密度与可信度
+- 避免在同一元素上叠加 `ring-*` 与 `shadow-*`（`ring` 基于 box-shadow，易在圆角与抗锯齿处产生混色/脏边）
 
 ### 3.3 字体与排版
 
@@ -92,12 +108,14 @@ Naive UI 主题覆盖在 `src/theme/naiveTheme.ts`。
 
 ### 4.2 结构与区域
 
-Sidebar 由上到下：
+主导航与 Sidebar 分工：
 
-1. **品牌区**：应用标识 + 版本 Tag + 折叠按钮
-2. **连接列表区**（滚动容器）：连接项卡片（可展开表树）
+- PrimaryNav 固定在最左侧，深色背景，承载全局路由；选中态使用浅色底、左侧细竖线和图标色
+- Sidebar 由上到下：
+  1. **连接工具区**：标题、连接数量、筛选、新建入口、折叠按钮
+  2. **连接列表区**（滚动容器）：连接项卡片（可展开表列表）
 
-> 后续计划：在 Sidebar 顶部加入“筛选/新建连接”快捷入口，并增加全局导航按钮。
+折叠时仍保留可识别的状态灯、连接名摘要与类型 Tag，避免只剩无语义图标。
 
 ### 4.3 虚拟列表（必须）
 
@@ -137,14 +155,12 @@ Sidebar 由上到下：
 ### 5.3 视觉状态（默认 / Hover / Selected / Focus）
 
 - 默认（未选中、未 hover）：卡片保持干净，仅展示边框与内容，避免常驻“边缘发色”
-- Hover：提供轻量阴影（例如 `shadow-sm`）与轻微边框加深，提示可交互
-- Selected（选中）：必须具备清晰的“抬起/悬浮”感
-  - 使用更明显的 elevation 阴影 + 主题色微光（glow shadow）
-  - 配合主题色边框（例如 `border-sky-200`）作为选中锚点
+- Hover：仅做轻微背景变化与边框加深，提示可交互；不做持续上浮动画
+- Selected（选中）：使用 `border-sky-300`、`bg-sky-50/70`、状态文案与极轻阴影作为锚点
+  - 不使用 glow shadow 表达选中
   - 不使用常驻外圈 `ring-*` 来表达选中（避免与阴影叠加导致的混色/杂边）
-- Hover on Selected：选中卡片在 hover 时也应提供额外反馈
-  - 建议使用轻微上浮位移（例如 `hover:-translate-y-0.5`）+ 更强阴影
-  - 过渡需包含 `transform` 与 `box-shadow`（并考虑 `prefers-reduced-motion`）
+- Hover on Selected：保持稳定，不额外放大阴影或移动卡片
+- 过渡：连接卡片只过渡 `border-color/background-color/box-shadow`，避免列表滚动时的 transform 抖动
 - Focus（键盘可访问性）：卡片内部的主要按钮应使用 `focus-visible:outline-*` 统一焦点样式
   - 禁用浏览器默认 outline（避免出现“奇怪蓝边”伪装成卡片边缘）
 
@@ -222,6 +238,7 @@ Sidebar 由上到下：
 - Sidebar 宽度：`transition-[width] duration-[250ms] ease-out`
 - 展开/收起：`transition-[height] duration-200 ease-out`
 - 淡入淡出：`transition-opacity duration-150 ease-out`
+- 卡片状态：`transition-[border-color,background-color,box-shadow] duration-150 ease-out`
 
 > 说明：能用 `transform/opacity` 的动画优先用它们；仅在必要时（Sidebar 宽度、折叠面板高度）使用 `width/height` 过渡。
 
@@ -280,7 +297,7 @@ Sidebar 由上到下：
 - 组件统一使用 `<script setup lang="ts">`
 - TypeScript `strict`：避免 `any`，优先 `unknown` 并做 narrowing
 - Tailwind 仅用于布局/间距/字体颜色等“轻量样式”；复杂交互依赖 Naive 组件
-- 前端代码调整完成后，及时跑 `bun lint` 或 `bun check` 来发现问题；大改动前后都需要跑 `bun lint`（Biome）与 `bun build`
+- 前端代码调整完成后，及时跑 `bun run lint` 或 `bun run check` 来发现问题；大改动前后都需要跑 `bun run lint`（Biome）与 `bun run build`
 
 ---
 
@@ -290,7 +307,8 @@ Sidebar 由上到下：
 
 - 无连接档案：使用 `NEmpty`，文案引导用户“新建连接/导入连接”
 - 未连接：连接项卡片显示灰色状态灯，并在表列表区域显示“未连接”
-- 未选择表：Explorer 详情卡片显示“选择表以查看详情”
+- 未选择连接/未打开表：右侧工作区使用 `app-workspace-empty`，空态靠上居中，保留工作台感，不做大卡片包裹
+- 未选择表：Explorer 显示“打开一张表以查看 Schema 和数据”，并给出左侧连接卡片/右键创建表的下一步
 
 ### 12.2 加载态（Loading）
 
@@ -316,7 +334,7 @@ Sidebar 由上到下：
   - Enter/Space 触发按钮
 - 可点击区域：连接项主体按钮使用 `<button>`，确保可聚焦与可读
 - 颜色不是唯一信息：状态灯之外应辅以文案/Tag（例如“已连接/未连接”可在后续补齐）
-- 动效可控：后续建议支持“减少动效”偏好（例如检测 `prefers-reduced-motion`）
+- 动效可控：全局样式需响应 `prefers-reduced-motion`，减少动画时长与重复动画
 
 ---
 
@@ -337,15 +355,18 @@ Sidebar 由上到下：
 - [ ] 新组件使用 `<script setup lang="ts">`，无 `any`
 - [ ] 交互入口一致（连接/刷新/打开表都会先选中连接）
 - [ ] 空态/加载态/错误态齐全
+- [ ] 空态不使用营销式大卡片，文案直接给出下一步动作
 - [ ] 动效不影响正文主区域性能（避免大面积 reflow）
 - [ ] 列表规模大时仍流畅（虚拟化开启、滚动不抖）
-- [ ] 通过 `bun lint`（或 `bun check`）与 `bun build`
+- [ ] 使用 Tauri WebDriver 抽查桌面 WebView 截图，确认主导航、侧栏与空态在真实壳内不重叠
+- [ ] 通过 `bun run lint`（或 `bun run check`）与 `bun run build`
 
 ---
 
 ## 16. Roadmap（UI 视角）
 
-- Sidebar：补齐筛选（Local/S3/Remote）+ 新建连接 Modal + 全局导航（Explorer/Search）
+- Sidebar：补齐更强的连接搜索/分组；筛选与新建入口已在连接工具区落地
+- PrimaryNav：补齐路由项 tooltip、快捷键与当前上下文提示
 - Explorer：补齐常用 DBeaver 风格能力（搜索框、列宽/列固定、快捷筛选）
 - Search：接入 `query_filter_v1 / vector_search_v1 / fts_search_v1`，复用结果表格
 - 性能：启用 Arrow IPC（`format: "arrow"`）以提升大数据场景
