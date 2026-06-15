@@ -14,6 +14,7 @@ import type {
 	ConnectResponseV1,
 	CreateIndexResponseV1,
 	CreateTableResponseV1,
+	DeleteRowsRequestV1,
 	DeleteRowsResponseV1,
 	DisconnectResponseV1,
 	DropColumnsResponseV1,
@@ -44,6 +45,7 @@ import type {
 	SchemaDefinition,
 	SchemaDefinitionInput,
 	TableHandle,
+	UpdateRowsRequestV1,
 	UpdateRowsResponseV1,
 	VectorSearchRequestV1,
 	WriteDataMode,
@@ -229,19 +231,16 @@ export async function writeRowsV1(
 	return invokeV1("write_rows_v1", { request: { tableId, rows, mode } })
 }
 
-export async function updateRowsV1(request: {
-	tableId: string
-	filter?: string
-	updates: { column: string; expr: string }[]
-}): Promise<ResultEnvelope<UpdateRowsResponseV1>> {
+export async function updateRowsV1(
+	request: UpdateRowsRequestV1
+): Promise<ResultEnvelope<UpdateRowsResponseV1>> {
 	return invokeV1("update_rows_v1", { request })
 }
 
 export async function deleteRowsV1(
-	tableId: string,
-	filter: string
+	request: DeleteRowsRequestV1
 ): Promise<ResultEnvelope<DeleteRowsResponseV1>> {
-	return invokeV1("delete_rows_v1", { request: { tableId, filter } })
+	return invokeV1("delete_rows_v1", { request })
 }
 
 export async function importDataV1(

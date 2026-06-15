@@ -850,6 +850,11 @@ function removeUpdateColumn(index: number) {
 	updateColumns.value = updateColumns.value.filter((_, idx) => idx !== index)
 }
 
+function isTriviallyBroadFilter(filter: string) {
+	const normalized = filter.replace(/\s+/g, "").toLowerCase()
+	return normalized === "true" || normalized === "1=1"
+}
+
 function parseWriteRows(): unknown[] | null {
 	try {
 		const parsed = JSON.parse(writeRowsText.value.trim())
@@ -1291,6 +1296,14 @@ async function submitUpdateRows() {
 		setError("请填写需要更新的列与表达式")
 		return
 	}
+	const filter = updateFilter.value.trim()
+	const allowFullTable = !filter || isTriviallyBroadFilter(filter)
+	if (allowFullTable) {
+		const shouldContinue = await confirm("本次更新将影响整张表。只有在确认需要全表更新时才继续。")
+		if (!shouldContinue) {
+			return
+		}
+	}
 
 	try {
 		isUpdatingRows.value = true
@@ -1298,8 +1311,9 @@ async function submitUpdateRows() {
 		unwrapEnvelope(
 			await updateRowsV1({
 				tableId,
-				filter: updateFilter.value.trim() || undefined,
+				filter: filter || undefined,
 				updates,
+				allowFullTable,
 			})
 		)
 		setStatus("更新操作已提交")
@@ -1323,11 +1337,18 @@ async function submitDeleteRows() {
 		setError("请输入删除条件")
 		return
 	}
+	const allowFullTable = isTriviallyBroadFilter(filter)
+	if (allowFullTable) {
+		const shouldContinue = await confirm("本次删除将影响整张表。只有在确认需要全表删除时才继续。")
+		if (!shouldContinue) {
+			return
+		}
+	}
 
 	try {
 		isDeletingRows.value = true
 		clearMessages()
-		unwrapEnvelope(await deleteRowsV1(tableId, filter))
+		unwrapEnvelope(await deleteRowsV1({ tableId, filter, allowFullTable }))
 		setStatus("删除操作已提交")
 		await runScan()
 	} catch (error) {

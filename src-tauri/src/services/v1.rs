@@ -4,7 +4,11 @@ use std::io::{BufRead, BufReader, BufWriter, Cursor, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use arrow_array::{RecordBatch, RecordBatchIterator};
+use arrow_array::{
+    types::Float32Type, ArrayRef, BooleanArray, FixedSizeListArray, Float32Array, Float64Array,
+    Int16Array, Int32Array, Int64Array, Int8Array, LargeStringArray, RecordBatch,
+    RecordBatchIterator, StringArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
+};
 use arrow_csv::{ReaderBuilder as CsvReaderBuilder, WriterBuilder as CsvWriterBuilder};
 use arrow_ipc::writer::StreamWriter;
 use arrow_json::{ArrayWriter, ReaderBuilder};
@@ -22,8 +26,8 @@ use lancedb::index::vector::{
 use lancedb::index::{Index, IndexType};
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 use lancedb::table::{
-    AddDataMode, ColumnAlteration, CompactionOptions, Duration as LanceDuration, NewColumnTransform,
-    OptimizeAction,
+    AddDataMode, ColumnAlteration, CompactionOptions, Duration as LanceDuration,
+    NewColumnTransform, OptimizeAction,
 };
 use lancedb::Table;
 use log::{debug, error, info, trace, warn};
@@ -33,7 +37,7 @@ use parquet::arrow::ArrowWriter;
 use crate::domain::connect::infer_backend_kind;
 use crate::ipc::v1::{
     AddColumnsRequestV1, AddColumnsResponseV1, AlterColumnsRequestV1, AlterColumnsResponseV1,
-    ArrowChunk, CheckoutTableLatestRequestV1, CheckoutTableLatestResponseV1,
+    ArrowChunk, AuthDescriptor, CheckoutTableLatestRequestV1, CheckoutTableLatestResponseV1,
     CheckoutTableVersionRequestV1, CheckoutTableVersionResponseV1, CloneTableRequestV1,
     CloneTableResponseV1, ColumnAlterationInput, CombinedSearchRequestV1, ConnectRequestV1,
     ConnectResponseV1, CreateIndexRequestV1, CreateIndexResponseV1, CreateTableRequestV1,
@@ -48,8 +52,8 @@ use crate::ipc::v1::{
     OptimizeTableRequestV1, OptimizeTableResponseV1, QueryFilterRequestV1, QueryResponseV1,
     RenameTableRequestV1, RenameTableResponseV1, ResultEnvelope, ScanRequestV1, ScanResponseV1,
     SchemaDefinition, SchemaDefinitionInput, SchemaFieldInput, TableHandle, TableInfo,
-    UpdateRowsRequestV1, UpdateRowsResponseV1, VectorSearchRequestV1, VersionInfoV1,
-    WriteDataMode, WriteRowsRequestV1, WriteRowsResponseV1, AuthDescriptor,
+    UpdateRowsRequestV1, UpdateRowsResponseV1, VectorSearchRequestV1, VersionInfoV1, WriteDataMode,
+    WriteRowsRequestV1, WriteRowsResponseV1,
 };
 use crate::state::AppState;
 
@@ -75,8 +79,8 @@ fn batches_to_json_rows(batches: &[RecordBatch]) -> Result<Vec<serde_json::Value
 
 fn batches_to_arrow_ipc_base64(batches: &[RecordBatch], schema: &Schema) -> Result<String, String> {
     let mut buffer = Vec::new();
-    let mut writer = StreamWriter::try_new(&mut buffer, schema)
-        .map_err(|error| error.to_string())?;
+    let mut writer =
+        StreamWriter::try_new(&mut buffer, schema).map_err(|error| error.to_string())?;
 
     for batch in batches {
         writer.write(batch).map_err(|error| error.to_string())?;
@@ -171,10 +175,18 @@ async fn execute_query_batches(query: impl ExecutableQuery) -> Result<Vec<Record
         .map_err(|error| error.to_string())
 }
 
-fn json_rows_to_batches(schema: SchemaRef, rows: &[serde_json::Value]) -> Result<Vec<RecordBatch>, String> {
+fn json_rows_to_batches(
+    schema: SchemaRef,
+    rows: &[serde_json::Value],
+) -> Result<Vec<RecordBatch>, String> {
     if rows.is_empty() {
         return Err("rows cannot be empty".to_string());
     }
+
+    if schema_needs_manual_json_conversion(schema.as_ref()) {
+        return Ok(vec![json_rows_to_record_batch(schema, rows)?]);
+    }
+
     let mut buffer = String::new();
     for row in rows {
         let line = serde_json::to_string(row).map_err(|error| error.to_string())?;
@@ -182,7 +194,9 @@ fn json_rows_to_batches(schema: SchemaRef, rows: &[serde_json::Value]) -> Result
         buffer.push('\n');
     }
     let cursor = Cursor::new(buffer.into_bytes());
-    let mut reader = ReaderBuilder::new(schema).build(cursor).map_err(|error| error.to_string())?;
+    let mut reader = ReaderBuilder::new(schema)
+        .build(cursor)
+        .map_err(|error| error.to_string())?;
     let mut batches = Vec::new();
     while let Some(batch) = reader.next() {
         let batch = batch.map_err(|error| error.to_string())?;
@@ -192,6 +206,407 @@ fn json_rows_to_batches(schema: SchemaRef, rows: &[serde_json::Value]) -> Result
         return Err("no rows parsed from input".to_string());
     }
     Ok(batches)
+}
+
+fn schema_needs_manual_json_conversion(schema: &Schema) -> bool {
+    schema.fields().iter().any(|field| {
+        matches!(
+            field.data_type(),
+            DataType::FixedSizeList(item_field, _) if item_field.data_type() == &DataType::Float32
+        )
+    })
+}
+
+fn json_rows_to_record_batch(
+    schema: SchemaRef,
+    rows: &[serde_json::Value],
+) -> Result<RecordBatch, String> {
+    let arrays = schema
+        .fields()
+        .iter()
+        .map(|field| json_values_to_array(field.as_ref(), rows))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    RecordBatch::try_new(schema, arrays).map_err(|error| error.to_string())
+}
+
+fn json_row_field_value<'a>(
+    row: &'a serde_json::Value,
+    row_index: usize,
+    field: &Field,
+) -> Result<Option<&'a serde_json::Value>, String> {
+    let object = row.as_object().ok_or_else(|| {
+        format!("row {row_index} must be a JSON object when writing to table schema")
+    })?;
+
+    match object.get(field.name()) {
+        Some(serde_json::Value::Null) | None if field.is_nullable() => Ok(None),
+        Some(serde_json::Value::Null) => Err(format!(
+            "field '{}' cannot be null in row {row_index}",
+            field.name()
+        )),
+        None => Err(format!(
+            "missing required field '{}' in row {row_index}",
+            field.name()
+        )),
+        Some(value) => Ok(Some(value)),
+    }
+}
+
+fn collect_field_values<T, F>(
+    rows: &[serde_json::Value],
+    field: &Field,
+    parse: F,
+) -> Result<Vec<Option<T>>, String>
+where
+    F: Fn(&serde_json::Value, usize, &Field) -> Result<T, String>,
+{
+    rows.iter()
+        .enumerate()
+        .map(|(row_index, row)| {
+            json_row_field_value(row, row_index, field)?
+                .map(|value| parse(value, row_index, field))
+                .transpose()
+        })
+        .collect()
+}
+
+fn parse_signed_json_number(
+    value: &serde_json::Value,
+    row_index: usize,
+    field: &Field,
+) -> Result<i64, String> {
+    if let Some(value) = value.as_i64() {
+        return Ok(value);
+    }
+
+    if let Some(value) = value.as_u64() {
+        return i64::try_from(value).map_err(|_| {
+            format!(
+                "field '{}' in row {row_index} must fit in a signed integer",
+                field.name()
+            )
+        });
+    }
+
+    Err(format!(
+        "field '{}' in row {row_index} must be an integer",
+        field.name()
+    ))
+}
+
+fn parse_unsigned_json_number(
+    value: &serde_json::Value,
+    row_index: usize,
+    field: &Field,
+) -> Result<u64, String> {
+    if let Some(value) = value.as_u64() {
+        return Ok(value);
+    }
+
+    if let Some(value) = value.as_i64() {
+        return u64::try_from(value).map_err(|_| {
+            format!(
+                "field '{}' in row {row_index} must be a non-negative integer",
+                field.name()
+            )
+        });
+    }
+
+    Err(format!(
+        "field '{}' in row {row_index} must be an integer",
+        field.name()
+    ))
+}
+
+fn parse_f32_json_number(
+    value: &serde_json::Value,
+    row_index: usize,
+    field: &Field,
+) -> Result<f32, String> {
+    let value = value.as_f64().ok_or_else(|| {
+        format!(
+            "field '{}' in row {row_index} must be a number",
+            field.name()
+        )
+    })?;
+
+    if !value.is_finite() || value < f32::MIN as f64 || value > f32::MAX as f64 {
+        return Err(format!(
+            "field '{}' in row {row_index} must fit in float32",
+            field.name()
+        ));
+    }
+
+    Ok(value as f32)
+}
+
+fn parse_f64_json_number(
+    value: &serde_json::Value,
+    row_index: usize,
+    field: &Field,
+) -> Result<f64, String> {
+    let value = value.as_f64().ok_or_else(|| {
+        format!(
+            "field '{}' in row {row_index} must be a number",
+            field.name()
+        )
+    })?;
+
+    if !value.is_finite() {
+        return Err(format!(
+            "field '{}' in row {row_index} must be finite",
+            field.name()
+        ));
+    }
+
+    Ok(value)
+}
+
+fn parse_bool_json_value(
+    value: &serde_json::Value,
+    row_index: usize,
+    field: &Field,
+) -> Result<bool, String> {
+    value.as_bool().ok_or_else(|| {
+        format!(
+            "field '{}' in row {row_index} must be a boolean",
+            field.name()
+        )
+    })
+}
+
+fn parse_string_json_value(
+    value: &serde_json::Value,
+    row_index: usize,
+    field: &Field,
+) -> Result<String, String> {
+    value.as_str().map(ToOwned::to_owned).ok_or_else(|| {
+        format!(
+            "field '{}' in row {row_index} must be a string",
+            field.name()
+        )
+    })
+}
+
+fn collect_fixed_size_list_float32_values(
+    rows: &[serde_json::Value],
+    field: &Field,
+    item_field: &Field,
+    length: i32,
+) -> Result<Vec<Option<Vec<Option<f32>>>>, String> {
+    let expected_len = usize::try_from(length)
+        .map_err(|_| format!("field '{}' has invalid fixed list length", field.name()))?;
+
+    rows.iter()
+        .enumerate()
+        .map(|(row_index, row)| {
+            let Some(value) = json_row_field_value(row, row_index, field)? else {
+                return Ok(None);
+            };
+
+            let values = value.as_array().ok_or_else(|| {
+                format!(
+                    "field '{}' in row {row_index} must be an array of {expected_len} float32 values",
+                    field.name()
+                )
+            })?;
+
+            if values.len() != expected_len {
+                return Err(format!(
+                    "field '{}' in row {row_index} must contain exactly {expected_len} values",
+                    field.name()
+                ));
+            }
+
+            values
+                .iter()
+                .enumerate()
+                .map(|(item_index, value)| {
+                    if value.is_null() {
+                        if item_field.is_nullable() {
+                            return Ok(None);
+                        }
+
+                        return Err(format!(
+                            "field '{}' item {item_index} in row {row_index} cannot be null",
+                            field.name()
+                        ));
+                    }
+
+                    parse_f32_json_number(value, row_index, field).map(Some)
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Some)
+        })
+        .collect()
+}
+
+fn json_values_to_array(field: &Field, rows: &[serde_json::Value]) -> Result<ArrayRef, String> {
+    match field.data_type() {
+        DataType::Int8 => Ok(Arc::new(Int8Array::from(collect_field_values(
+            rows,
+            field,
+            |value, row_index, field| {
+                i8::try_from(parse_signed_json_number(value, row_index, field)?).map_err(|_| {
+                    format!(
+                        "field '{}' in row {row_index} must fit in int8",
+                        field.name()
+                    )
+                })
+            },
+        )?))),
+        DataType::Int16 => Ok(Arc::new(Int16Array::from(collect_field_values(
+            rows,
+            field,
+            |value, row_index, field| {
+                i16::try_from(parse_signed_json_number(value, row_index, field)?).map_err(|_| {
+                    format!(
+                        "field '{}' in row {row_index} must fit in int16",
+                        field.name()
+                    )
+                })
+            },
+        )?))),
+        DataType::Int32 => Ok(Arc::new(Int32Array::from(collect_field_values(
+            rows,
+            field,
+            |value, row_index, field| {
+                i32::try_from(parse_signed_json_number(value, row_index, field)?).map_err(|_| {
+                    format!(
+                        "field '{}' in row {row_index} must fit in int32",
+                        field.name()
+                    )
+                })
+            },
+        )?))),
+        DataType::Int64 => Ok(Arc::new(Int64Array::from(collect_field_values(
+            rows,
+            field,
+            parse_signed_json_number,
+        )?))),
+        DataType::UInt8 => Ok(Arc::new(UInt8Array::from(collect_field_values(
+            rows,
+            field,
+            |value, row_index, field| {
+                u8::try_from(parse_unsigned_json_number(value, row_index, field)?).map_err(|_| {
+                    format!(
+                        "field '{}' in row {row_index} must fit in uint8",
+                        field.name()
+                    )
+                })
+            },
+        )?))),
+        DataType::UInt16 => Ok(Arc::new(UInt16Array::from(collect_field_values(
+            rows,
+            field,
+            |value, row_index, field| {
+                u16::try_from(parse_unsigned_json_number(value, row_index, field)?).map_err(|_| {
+                    format!(
+                        "field '{}' in row {row_index} must fit in uint16",
+                        field.name()
+                    )
+                })
+            },
+        )?))),
+        DataType::UInt32 => Ok(Arc::new(UInt32Array::from(collect_field_values(
+            rows,
+            field,
+            |value, row_index, field| {
+                u32::try_from(parse_unsigned_json_number(value, row_index, field)?).map_err(|_| {
+                    format!(
+                        "field '{}' in row {row_index} must fit in uint32",
+                        field.name()
+                    )
+                })
+            },
+        )?))),
+        DataType::UInt64 => Ok(Arc::new(UInt64Array::from(collect_field_values(
+            rows,
+            field,
+            parse_unsigned_json_number,
+        )?))),
+        DataType::Float32 => Ok(Arc::new(Float32Array::from(collect_field_values(
+            rows,
+            field,
+            parse_f32_json_number,
+        )?))),
+        DataType::Float64 => Ok(Arc::new(Float64Array::from(collect_field_values(
+            rows,
+            field,
+            parse_f64_json_number,
+        )?))),
+        DataType::Boolean => Ok(Arc::new(BooleanArray::from(collect_field_values(
+            rows,
+            field,
+            parse_bool_json_value,
+        )?))),
+        DataType::Utf8 => Ok(Arc::new(StringArray::from(collect_field_values(
+            rows,
+            field,
+            parse_string_json_value,
+        )?))),
+        DataType::LargeUtf8 => Ok(Arc::new(LargeStringArray::from(collect_field_values(
+            rows,
+            field,
+            parse_string_json_value,
+        )?))),
+        DataType::FixedSizeList(item_field, length)
+            if item_field.data_type() == &DataType::Float32 =>
+        {
+            Ok(Arc::new(FixedSizeListArray::from_iter_primitive::<
+                Float32Type,
+                _,
+                _,
+            >(
+                collect_fixed_size_list_float32_values(rows, field, item_field.as_ref(), *length)?,
+                *length,
+            )))
+        }
+        data_type => Err(format!(
+            "JSON row writes do not support Arrow data type {data_type:?} for field '{}'",
+            field.name()
+        )),
+    }
+}
+
+fn is_trivially_broad_filter(filter: &str) -> bool {
+    let normalized = filter
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+
+    matches!(normalized.as_str(), "true" | "1=1")
+}
+
+fn validate_mutation_filter(
+    operation: &str,
+    filter: Option<&str>,
+    allow_full_table: bool,
+) -> Result<Option<String>, String> {
+    let cleaned = filter
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+
+    let Some(cleaned) = cleaned else {
+        if allow_full_table {
+            return Ok(None);
+        }
+
+        return Err(format!(
+            "{operation} filter is required unless allowFullTable is true"
+        ));
+    };
+
+    if is_trivially_broad_filter(&cleaned) && !allow_full_table {
+        return Err(format!(
+            "{operation} filter targets the full table; set allowFullTable to true to confirm"
+        ));
+    }
+
+    Ok(Some(cleaned))
 }
 
 fn parse_delimiter(delimiter: Option<String>, fallback: u8) -> Result<u8, String> {
@@ -373,13 +788,20 @@ pub async fn connect_v1(
         AuthDescriptor::Inline { provider, params } => {
             if !params.is_empty() {
                 let keys: Vec<String> = params.keys().cloned().collect();
-                trace!("connect_v1 auth_provider=\"{}\" auth_keys={:?}", provider, keys);
+                trace!(
+                    "connect_v1 auth_provider=\"{}\" auth_keys={:?}",
+                    provider,
+                    keys
+                );
             }
             for (key, value) in params {
                 storage_options.insert(key.clone(), value.clone());
             }
         }
-        AuthDescriptor::SecretRef { provider, reference } => {
+        AuthDescriptor::SecretRef {
+            provider,
+            reference,
+        } => {
             warn!(
                 "connect_v1 secret_ref not supported provider=\"{}\" reference=\"{}\"",
                 provider, reference
@@ -490,7 +912,10 @@ pub async fn list_tables_v1(
     request: ListTablesRequestV1,
 ) -> ResultEnvelope<ListTablesResponseV1> {
     let started_at = Instant::now();
-    info!("list_tables_v1 start connection_id={}", request.connection_id);
+    info!(
+        "list_tables_v1 start connection_id={}",
+        request.connection_id
+    );
     let connection = match state.connections.lock() {
         Ok(manager) => manager.get_connection(&request.connection_id),
         Err(_) => {
@@ -671,7 +1096,10 @@ pub async fn list_indexes_v1(
     };
 
     let Some(table) = table else {
-        warn!("list_indexes_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "list_indexes_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -744,7 +1172,10 @@ pub async fn create_index_v1(
     };
 
     let Some(table) = table else {
-        warn!("create_index_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "create_index_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -800,7 +1231,10 @@ pub async fn drop_index_v1(
     };
 
     let Some(table) = table else {
-        warn!("drop_index_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "drop_index_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -919,7 +1353,10 @@ pub async fn add_columns_v1(
     };
 
     let Some(table) = table else {
-        warn!("add_columns_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "add_columns_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -933,14 +1370,20 @@ pub async fn add_columns_v1(
 
     let transforms = NewColumnTransform::AllNulls(schema);
     if let Err(error) = table.add_columns(transforms, None).await {
-        error!("add_columns_v1 failed table_id={} error={}", request.table_id, error);
+        error!(
+            "add_columns_v1 failed table_id={} error={}",
+            request.table_id, error
+        );
         return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
     }
 
     let updated_schema = match read_table_schema(&table).await {
         Ok(schema) => schema,
         Err(error) => {
-            error!("add_columns_v1 schema reload failed table_id={} error={}", request.table_id, error);
+            error!(
+                "add_columns_v1 schema reload failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error);
         }
     };
@@ -981,7 +1424,12 @@ fn build_column_alteration(input: &ColumnAlterationInput) -> Result<ColumnAltera
         return Err("column alteration must specify rename, nullable, or data_type".to_string());
     }
     let mut alteration = ColumnAlteration::new(input.path.trim().to_string());
-    if let Some(rename) = input.rename.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+    if let Some(rename) = input
+        .rename
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
         alteration = alteration.rename(rename.to_string());
     }
     if let Some(nullable) = input.nullable {
@@ -1010,7 +1458,10 @@ pub async fn alter_columns_v1(
     };
 
     let Some(table) = table else {
-        warn!("alter_columns_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "alter_columns_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -1037,14 +1488,20 @@ pub async fn alter_columns_v1(
     };
 
     if let Err(error) = table.alter_columns(&alterations).await {
-        error!("alter_columns_v1 failed table_id={} error={}", request.table_id, error);
+        error!(
+            "alter_columns_v1 failed table_id={} error={}",
+            request.table_id, error
+        );
         return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
     }
 
     let updated_schema = match read_table_schema(&table).await {
         Ok(schema) => schema,
         Err(error) => {
-            error!("alter_columns_v1 schema reload failed table_id={} error={}", request.table_id, error);
+            error!(
+                "alter_columns_v1 schema reload failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error);
         }
     };
@@ -1083,7 +1540,10 @@ pub async fn drop_columns_v1(
     };
 
     let Some(table) = table else {
-        warn!("drop_columns_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "drop_columns_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -1093,14 +1553,20 @@ pub async fn drop_columns_v1(
         .map(String::as_str)
         .collect::<Vec<_>>();
     if let Err(error) = table.drop_columns(&column_refs).await {
-        error!("drop_columns_v1 failed table_id={} error={}", request.table_id, error);
+        error!(
+            "drop_columns_v1 failed table_id={} error={}",
+            request.table_id, error
+        );
         return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
     }
 
     let updated_schema = match read_table_schema(&table).await {
         Ok(schema) => schema,
         Err(error) => {
-            error!("drop_columns_v1 schema reload failed table_id={} error={}", request.table_id, error);
+            error!(
+                "drop_columns_v1 schema reload failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error);
         }
     };
@@ -1140,14 +1606,20 @@ pub async fn write_rows_v1(
     };
 
     let Some(table) = table else {
-        warn!("write_rows_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "write_rows_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let schema = match table.schema().await {
         Ok(schema) => schema,
         Err(error) => {
-            error!("write_rows_v1 failed to read schema table_id={} error={}", request.table_id, error);
+            error!(
+                "write_rows_v1 failed to read schema table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1155,7 +1627,10 @@ pub async fn write_rows_v1(
     let batches = match json_rows_to_batches(schema.clone(), &request.rows) {
         Ok(batches) => batches,
         Err(error) => {
-            warn!("write_rows_v1 invalid rows table_id={} error={}", request.table_id, error);
+            warn!(
+                "write_rows_v1 invalid rows table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::InvalidArgument, error);
         }
     };
@@ -1169,7 +1644,10 @@ pub async fn write_rows_v1(
     let result = match builder.execute().await {
         Ok(result) => result,
         Err(error) => {
-            error!("write_rows_v1 failed table_id={} error={}", request.table_id, error);
+            error!(
+                "write_rows_v1 failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1213,13 +1691,25 @@ pub async fn update_rows_v1(
     };
 
     let Some(table) = table else {
-        warn!("update_rows_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "update_rows_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
+    let filter = match validate_mutation_filter(
+        "update",
+        request.filter.as_deref(),
+        request.allow_full_table,
+    ) {
+        Ok(filter) => filter,
+        Err(error) => return ResultEnvelope::err(ErrorCode::InvalidArgument, error),
+    };
+
     let mut builder = table.update();
-    if let Some(filter) = request.filter.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
-        builder = builder.only_if(filter.to_string());
+    if let Some(filter) = filter {
+        builder = builder.only_if(filter);
     }
 
     for update in &request.updates {
@@ -1237,7 +1727,10 @@ pub async fn update_rows_v1(
     let result = match builder.execute().await {
         Ok(result) => result,
         Err(error) => {
-            error!("update_rows_v1 failed table_id={} error={}", request.table_id, error);
+            error!(
+                "update_rows_v1 failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1264,10 +1757,20 @@ pub async fn delete_rows_v1(
     let started_at = Instant::now();
     info!("delete_rows_v1 start table_id={}", request.table_id);
 
-    let filter = request.filter.trim();
-    if filter.is_empty() {
-        return ResultEnvelope::err(ErrorCode::InvalidArgument, "filter cannot be empty");
-    }
+    let filter = match validate_mutation_filter(
+        "delete",
+        Some(request.filter.as_str()),
+        request.allow_full_table,
+    ) {
+        Ok(Some(filter)) => filter,
+        Ok(None) => {
+            return ResultEnvelope::err(
+                ErrorCode::InvalidArgument,
+                "delete filter is required by LanceDB even when allowFullTable is true",
+            );
+        }
+        Err(error) => return ResultEnvelope::err(ErrorCode::InvalidArgument, error),
+    };
 
     let table = match state.connections.lock() {
         Ok(manager) => manager.get_table(&request.table_id),
@@ -1278,14 +1781,20 @@ pub async fn delete_rows_v1(
     };
 
     let Some(table) = table else {
-        warn!("delete_rows_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "delete_rows_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
-    let result = match table.delete(filter).await {
+    let result = match table.delete(&filter).await {
         Ok(result) => result,
         Err(error) => {
-            error!("delete_rows_v1 failed table_id={} error={}", request.table_id, error);
+            error!(
+                "delete_rows_v1 failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1326,14 +1835,20 @@ pub async fn import_data_v1(
     };
 
     let Some(table) = table else {
-        warn!("import_data_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "import_data_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let schema = match table.schema().await {
         Ok(schema) => schema,
         Err(error) => {
-            error!("import_data_v1 failed to read schema table_id={} error={}", request.table_id, error);
+            error!(
+                "import_data_v1 failed to read schema table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1365,7 +1880,9 @@ pub async fn import_data_v1(
             while let Some(batch) = reader.next() {
                 let batch = match batch {
                     Ok(batch) => batch,
-                    Err(error) => return ResultEnvelope::err(ErrorCode::Internal, error.to_string()),
+                    Err(error) => {
+                        return ResultEnvelope::err(ErrorCode::Internal, error.to_string())
+                    }
                 };
                 batches.push(batch);
             }
@@ -1389,7 +1906,9 @@ pub async fn import_data_v1(
             while let Some(batch) = reader.next() {
                 let batch = match batch {
                     Ok(batch) => batch,
-                    Err(error) => return ResultEnvelope::err(ErrorCode::Internal, error.to_string()),
+                    Err(error) => {
+                        return ResultEnvelope::err(ErrorCode::Internal, error.to_string())
+                    }
                 };
                 batches.push(batch);
             }
@@ -1408,7 +1927,9 @@ pub async fn import_data_v1(
             for line in reader.lines() {
                 let line = match line {
                     Ok(line) => line,
-                    Err(error) => return ResultEnvelope::err(ErrorCode::Internal, error.to_string()),
+                    Err(error) => {
+                        return ResultEnvelope::err(ErrorCode::Internal, error.to_string())
+                    }
                 };
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
@@ -1451,7 +1972,10 @@ pub async fn import_data_v1(
     let result = match builder.execute().await {
         Ok(result) => result,
         Err(error) => {
-            error!("import_data_v1 failed table_id={} error={}", request.table_id, error);
+            error!(
+                "import_data_v1 failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1493,14 +2017,20 @@ pub async fn export_data_v1(
     };
 
     let Some(table) = table else {
-        warn!("export_data_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "export_data_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let fallback_schema = match table.schema().await {
         Ok(schema) => schema,
         Err(error) => {
-            error!("export_data_v1 failed to read schema table_id={} error={}", request.table_id, error);
+            error!(
+                "export_data_v1 failed to read schema table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1516,7 +2046,10 @@ pub async fn export_data_v1(
     let batches = match execute_query_batches(query).await {
         Ok(batches) => batches,
         Err(error) => {
-            error!("export_data_v1 query failed table_id={} error={}", request.table_id, error);
+            error!(
+                "export_data_v1 query failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error);
         }
     };
@@ -1585,16 +2118,22 @@ pub async fn export_data_v1(
             for row in rows {
                 let line = match serde_json::to_string(&row) {
                     Ok(line) => line,
-                    Err(error) => return ResultEnvelope::err(ErrorCode::Internal, error.to_string()),
+                    Err(error) => {
+                        return ResultEnvelope::err(ErrorCode::Internal, error.to_string())
+                    }
                 };
-                if writer.write_all(line.as_bytes()).is_err()
-                    || writer.write_all(b"\n").is_err()
-                {
-                    return ResultEnvelope::err(ErrorCode::Internal, "failed to write jsonl".to_string());
+                if writer.write_all(line.as_bytes()).is_err() || writer.write_all(b"\n").is_err() {
+                    return ResultEnvelope::err(
+                        ErrorCode::Internal,
+                        "failed to write jsonl".to_string(),
+                    );
                 }
             }
             if writer.flush().is_err() {
-                return ResultEnvelope::err(ErrorCode::Internal, "failed to flush jsonl".to_string());
+                return ResultEnvelope::err(
+                    ErrorCode::Internal,
+                    "failed to flush jsonl".to_string(),
+                );
             }
         }
     }
@@ -1814,14 +2353,20 @@ pub async fn get_schema_v1(
     };
 
     let Some(table) = table else {
-        warn!("get_schema_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "get_schema_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let schema = match table.schema().await {
         Ok(schema) => schema,
         Err(error) => {
-            error!("get_schema_v1 failed table_id={} error={}", request.table_id, error);
+            error!(
+                "get_schema_v1 failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1853,14 +2398,23 @@ pub async fn list_versions_v1(
     };
 
     let Some(table) = table else {
-        warn!("list_versions_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "list_versions_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let versions = match table.list_versions().await {
-        Ok(versions) => versions.into_iter().map(to_version_info).collect::<Vec<_>>(),
+        Ok(versions) => versions
+            .into_iter()
+            .map(to_version_info)
+            .collect::<Vec<_>>(),
         Err(error) => {
-            error!("list_versions_v1 failed table_id={} error={}", request.table_id, error);
+            error!(
+                "list_versions_v1 failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1891,14 +2445,20 @@ pub async fn get_table_version_v1(
     };
 
     let Some(table) = table else {
-        warn!("get_table_version_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "get_table_version_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
     let version = match table.version().await {
         Ok(version) => version,
         Err(error) => {
-            error!("get_table_version_v1 failed table_id={} error={}", request.table_id, error);
+            error!(
+                "get_table_version_v1 failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1935,7 +2495,10 @@ pub async fn checkout_table_version_v1(
     };
 
     let Some(table) = table else {
-        warn!("checkout_table_version_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "checkout_table_version_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -1950,7 +2513,10 @@ pub async fn checkout_table_version_v1(
     let version = match table.version().await {
         Ok(version) => version,
         Err(error) => {
-            error!("checkout_table_version_v1 read version failed table_id={} error={}", request.table_id, error);
+            error!(
+                "checkout_table_version_v1 read version failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -1973,7 +2539,10 @@ pub async fn checkout_table_latest_v1(
     request: CheckoutTableLatestRequestV1,
 ) -> ResultEnvelope<CheckoutTableLatestResponseV1> {
     let started_at = Instant::now();
-    info!("checkout_table_latest_v1 start table_id={}", request.table_id);
+    info!(
+        "checkout_table_latest_v1 start table_id={}",
+        request.table_id
+    );
 
     let table = match state.connections.lock() {
         Ok(manager) => manager.get_table(&request.table_id),
@@ -1984,7 +2553,10 @@ pub async fn checkout_table_latest_v1(
     };
 
     let Some(table) = table else {
-        warn!("checkout_table_latest_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "checkout_table_latest_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -1999,7 +2571,10 @@ pub async fn checkout_table_latest_v1(
     let version = match table.version().await {
         Ok(version) => version,
         Err(error) => {
-            error!("checkout_table_latest_v1 read version failed table_id={} error={}", request.table_id, error);
+            error!(
+                "checkout_table_latest_v1 read version failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -2024,14 +2599,15 @@ pub async fn clone_table_v1(
     let started_at = Instant::now();
     info!(
         "clone_table_v1 start connection_id={} table_id={} target=\"{}\"",
-        request.connection_id,
-        request.table_id,
-        request.target_table_name
+        request.connection_id, request.table_id, request.target_table_name
     );
 
     let target_name = request.target_table_name.trim();
     if target_name.is_empty() {
-        return ResultEnvelope::err(ErrorCode::InvalidArgument, "target table name cannot be empty");
+        return ResultEnvelope::err(
+            ErrorCode::InvalidArgument,
+            "target table name cannot be empty",
+        );
     }
 
     let (connection, table) = match state.connections.lock() {
@@ -2047,12 +2623,18 @@ pub async fn clone_table_v1(
     };
 
     let Some(connection) = connection else {
-        warn!("clone_table_v1 connection not found connection_id={}", request.connection_id);
+        warn!(
+            "clone_table_v1 connection not found connection_id={}",
+            request.connection_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "connection not found");
     };
 
     let Some(table) = table else {
-        warn!("clone_table_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "clone_table_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -2141,7 +2723,10 @@ pub async fn scan_v1(state: &AppState, request: ScanRequestV1) -> ResultEnvelope
     let fallback_schema = match table.schema().await {
         Ok(schema) => schema,
         Err(error) => {
-            error!("scan_v1 failed to read schema table_id={} error={}", request.table_id, error);
+            error!(
+                "scan_v1 failed to read schema table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error.to_string());
         }
     };
@@ -2161,7 +2746,10 @@ pub async fn scan_v1(state: &AppState, request: ScanRequestV1) -> ResultEnvelope
             let (mut rows, schema) = match execute_query_json(query, fallback_definition).await {
                 Ok(result) => result,
                 Err(error) => {
-                    error!("scan_v1 query failed table_id={} error={}", request.table_id, error);
+                    error!(
+                        "scan_v1 query failed table_id={} error={}",
+                        request.table_id, error
+                    );
                     return ResultEnvelope::err(ErrorCode::Internal, error);
                 }
             };
@@ -2198,7 +2786,10 @@ pub async fn scan_v1(state: &AppState, request: ScanRequestV1) -> ResultEnvelope
             let batches = match execute_query_batches(query).await {
                 Ok(result) => result,
                 Err(error) => {
-                    error!("scan_v1 query failed table_id={} error={}", request.table_id, error);
+                    error!(
+                        "scan_v1 query failed table_id={} error={}",
+                        request.table_id, error
+                    );
                     return ResultEnvelope::err(ErrorCode::Internal, error);
                 }
             };
@@ -2282,7 +2873,10 @@ pub async fn query_filter_v1(
     };
 
     let Some(table) = table else {
-        warn!("query_filter_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "query_filter_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -2369,7 +2963,10 @@ pub async fn combined_search_v1(
         .filter(|value| !value.is_empty());
 
     if !has_vector && query_text.is_none() {
-        warn!("combined_search_v1 missing vector and query table_id={}", request.table_id);
+        warn!(
+            "combined_search_v1 missing vector and query table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(
             ErrorCode::InvalidArgument,
             "vector or query text is required",
@@ -2385,7 +2982,10 @@ pub async fn combined_search_v1(
     };
 
     let Some(table) = table else {
-        warn!("combined_search_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "combined_search_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -2582,7 +3182,10 @@ pub async fn vector_search_v1(
     }
 
     if request.vector.is_empty() {
-        warn!("vector_search_v1 empty vector table_id={}", request.table_id);
+        warn!(
+            "vector_search_v1 empty vector table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::InvalidArgument, "vector must not be empty");
     }
 
@@ -2595,7 +3198,10 @@ pub async fn vector_search_v1(
     };
 
     let Some(table) = table else {
-        warn!("vector_search_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "vector_search_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -2647,7 +3253,10 @@ pub async fn vector_search_v1(
     let (mut rows, schema) = match execute_query_json(query, fallback_schema).await {
         Ok(result) => result,
         Err(error) => {
-            error!("vector_search_v1 query failed table_id={} error={}", request.table_id, error);
+            error!(
+                "vector_search_v1 query failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error);
         }
     };
@@ -2714,7 +3323,10 @@ pub async fn fts_search_v1(
     };
 
     let Some(table) = table else {
-        warn!("fts_search_v1 table not found table_id={}", request.table_id);
+        warn!(
+            "fts_search_v1 table not found table_id={}",
+            request.table_id
+        );
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
@@ -2759,7 +3371,10 @@ pub async fn fts_search_v1(
     let (mut rows, schema) = match execute_query_json(query, fallback_schema).await {
         Ok(result) => result,
         Err(error) => {
-            error!("fts_search_v1 query failed table_id={} error={}", request.table_id, error);
+            error!(
+                "fts_search_v1 query failed table_id={} error={}",
+                request.table_id, error
+            );
             return ResultEnvelope::err(ErrorCode::Internal, error);
         }
     };
