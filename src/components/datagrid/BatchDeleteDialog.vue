@@ -49,13 +49,20 @@ watch(
 				此操作将永久删除符合条件的数据，请谨慎操作。
 			</NAlert>
 			<div>
-				<label class="mb-1 block text-sm font-medium text-slate-600">删除条件</label>
+				<label
+					for="batch-delete-filter"
+					class="mb-1 block text-sm font-medium text-slate-600"
+				>
+					删除条件
+				</label>
 				<NInput
 					v-model:value="filterExpr"
 					placeholder="id = 1"
 					size="small"
+					input-id="batch-delete-filter"
+					aria-describedby="batch-delete-filter-help"
 				/>
-				<p class="mt-1 text-xs text-slate-400">
+				<p id="batch-delete-filter-help" class="mt-1 text-xs text-slate-400">
 					输入 SQL 风格的过滤表达式来指定要删除的行
 				</p>
 			</div>

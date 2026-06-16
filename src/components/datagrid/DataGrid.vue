@@ -359,6 +359,7 @@ function hasColumnFilter(columnKey: string): boolean {
 								<button
 									class="datagrid-header-menu-trigger"
 									title="列菜单"
+									:aria-label="`打开 ${col.label} 列菜单`"
 									@click="openHeaderMenu(col, $event)"
 									@mousedown.stop
 								>

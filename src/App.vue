@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { darkTheme } from "naive-ui"
-import { computed, watchEffect } from "vue"
+import { darkTheme, dateZhCN, zhCN } from "naive-ui"
+import { computed, watch, watchEffect } from "vue"
 import { RouterView, useRoute } from "vue-router"
 import PrimaryNav from "./components/layout/PrimaryNav.vue"
 import StatusMessageBridge from "./components/StatusMessageBridge.vue"
 import Sidebar from "./components/sidebar/Sidebar.vue"
+import { shouldClearTransientMessagesOnRouteChange } from "./composables/statusMessagePolicy"
 import { useConnection } from "./composables/useConnection"
 import { useProfiles } from "./composables/useProfiles"
 import { useStatusMessages } from "./composables/useStatusMessages"
@@ -136,10 +137,24 @@ watchEffect(() => {
 	}
 	void selectProfile(raw)
 })
+
+watch(
+	() => route.fullPath,
+	(_value, previous) => {
+		if (shouldClearTransientMessagesOnRouteChange(previous)) {
+			clearMessages()
+		}
+	}
+)
 </script>
 
 <template>
-	<NConfigProvider :theme="isDark ? darkTheme : undefined" :theme-overrides="isDark ? darkThemeOverrides : themeOverrides">
+	<NConfigProvider
+		:theme="isDark ? darkTheme : undefined"
+		:theme-overrides="isDark ? darkThemeOverrides : themeOverrides"
+		:locale="zhCN"
+		:date-locale="dateZhCN"
+	>
 		<NGlobalStyle />
 		<NMessageProvider>
 			<NDialogProvider>
@@ -151,6 +166,7 @@ watchEffect(() => {
 					<div v-else class="flex h-full min-h-0">
 						<PrimaryNav />
 						<Sidebar
+							class="hidden md:flex"
 							:profiles="profiles"
 							:active-profile-id="activeProfileId"
 							:connection-states="connectionStates"

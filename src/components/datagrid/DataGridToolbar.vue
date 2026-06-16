@@ -45,6 +45,7 @@ const emit = defineEmits<{
 				class="datagrid-toolbar-btn"
 				:class="{ 'datagrid-toolbar-btn--loading': loading }"
 				title="刷新数据 (F5)"
+				aria-label="刷新数据"
 				:disabled="disabled || loading"
 				@click="emit('refresh')"
 			>
@@ -57,6 +58,7 @@ const emit = defineEmits<{
 				class="datagrid-toolbar-btn"
 				:class="{ 'datagrid-toolbar-btn--active': showAdvancedFilter }"
 				title="高级筛选 (Ctrl+Shift+F)"
+				aria-label="高级筛选"
 				:disabled="disabled"
 				@click="emit('toggle-advanced-filter')"
 			>
@@ -73,6 +75,7 @@ const emit = defineEmits<{
 			<button
 				class="datagrid-toolbar-btn"
 				title="添加行 (Ctrl+N)"
+				aria-label="添加行"
 				:disabled="disabled"
 				@click="emit('add-row')"
 			>
@@ -83,6 +86,7 @@ const emit = defineEmits<{
 				v-if="hasChanges"
 				class="datagrid-toolbar-btn datagrid-toolbar-btn--warning"
 				title="放弃更改"
+				aria-label="放弃更改"
 				@click="emit('discard')"
 			>
 				<Undo2 class="h-4 w-4" />
@@ -92,6 +96,7 @@ const emit = defineEmits<{
 				class="datagrid-toolbar-btn"
 				:class="{ 'datagrid-toolbar-btn--primary': hasChanges }"
 				title="保存更改 (Ctrl+S)"
+				aria-label="保存更改"
 				:disabled="disabled || !hasChanges"
 				@click="emit('save')"
 			>
@@ -107,6 +112,7 @@ const emit = defineEmits<{
 			<button
 				class="datagrid-toolbar-btn"
 				title="批量写入数据"
+				aria-label="批量写入数据"
 				:disabled="disabled"
 				@click="emit('open-batch-write')"
 			>
@@ -116,6 +122,7 @@ const emit = defineEmits<{
 			<button
 				class="datagrid-toolbar-btn"
 				title="批量更新数据"
+				aria-label="批量更新数据"
 				:disabled="disabled"
 				@click="emit('open-batch-update')"
 			>
@@ -125,6 +132,7 @@ const emit = defineEmits<{
 			<button
 				class="datagrid-toolbar-btn"
 				title="批量删除数据"
+				aria-label="批量删除数据"
 				:disabled="disabled"
 				@click="emit('open-batch-delete')"
 			>
@@ -136,6 +144,7 @@ const emit = defineEmits<{
 			<button
 				class="datagrid-toolbar-btn"
 				title="导出数据"
+				aria-label="导出数据"
 				:disabled="disabled"
 				@click="emit('export')"
 			>

@@ -12,7 +12,7 @@ import {
 	listVersionsV1,
 	unwrapEnvelope,
 } from "../../lib/tauriClient"
-import { formatMetadata, TRIGGER_DATA_REFRESH_KEY } from "./explorerShared"
+import { getMetadataEntries, TRIGGER_DATA_REFRESH_KEY } from "./explorerShared"
 
 const {
 	activeProfileId,
@@ -42,14 +42,13 @@ const { execute: execCheckoutLatest, isLoading: isCheckingOutLatest } =
 const timelineItems = computed(() =>
 	versions.value.map((v) => {
 		const isCurrent = v.version === currentVersion.value
-		const meta = formatMetadata(v.metadata)
 		return {
 			version: v.version,
 			isCurrent,
 			type: (isCurrent ? "success" : "default") as "success" | "default",
 			title: `v${v.version}${isCurrent ? "  (当前)" : ""}`,
 			time: formatTimestamp(v.timestamp),
-			content: meta !== "—" ? meta : undefined,
+			metadataEntries: getMetadataEntries(v.metadata),
 		}
 	})
 )
@@ -226,9 +225,20 @@ watch(
 					:type="item.type"
 					:title="item.title"
 					:time="item.time"
-					:content="item.content"
 					:line-type="item.isCurrent ? 'dashed' : 'default'"
-				/>
+				>
+					<div v-if="item.metadataEntries.length" class="version-metadata-grid">
+						<div
+							v-for="entry in item.metadataEntries"
+							:key="`${item.version}-${entry.key}`"
+							class="version-metadata-entry"
+						>
+							<span class="version-metadata-key">{{ entry.key }}</span>
+							<span class="version-metadata-value">{{ entry.value }}</span>
+						</div>
+					</div>
+					<div v-else class="text-xs text-slate-400">无 metadata</div>
+				</NTimelineItem>
 			</NTimeline>
 			<NEmpty v-else description="暂无版本记录" class="mt-3" />
 		</NCard>
@@ -308,3 +318,43 @@ watch(
 		</NCard>
 	</div>
 </template>
+
+<style scoped>
+.version-metadata-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 6px;
+	margin-top: 6px;
+}
+
+.version-metadata-entry {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 6px;
+	border: 1px solid #e2e8f0;
+	border-radius: 6px;
+	background: #f8fafc;
+	padding: 4px 6px;
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.version-metadata-key {
+	flex: 0 0 auto;
+	max-width: 45%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: #64748b;
+	font-weight: 600;
+}
+
+.version-metadata-value {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: #334155;
+}
+</style>

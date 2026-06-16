@@ -3,6 +3,8 @@ import type { InjectionKey, Ref } from "vue"
 import { h } from "vue"
 import type { FieldDataType, IndexTypeV1, SchemaFieldInput } from "../../ipc/v1"
 
+export { formatMetadata, getMetadataEntries } from "./versionMetadata"
+
 // ── Injection Keys ─────────────────────────────────────
 
 /** Reactive counter; incremented when data should be re-scanned. */
@@ -110,14 +112,6 @@ export const fileFormatOptions: SelectOption[] = [
 
 export function renderHeader(title: string) {
 	return h("span", { class: "table-header-ellipsis", title }, title)
-}
-
-export function formatMetadata(metadata: Record<string, string>) {
-	const entries = Object.entries(metadata ?? {})
-	if (!entries.length) {
-		return "—"
-	}
-	return entries.map(([key, value]) => `${key}=${value}`).join(", ")
 }
 
 export function createFieldDraft(): FieldDraft {

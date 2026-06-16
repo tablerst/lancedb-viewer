@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { confirm } from "@tauri-apps/plugin-dialog"
 import BatchDeleteDialog from "../../components/datagrid/BatchDeleteDialog.vue"
 import BatchUpdateDialog from "../../components/datagrid/BatchUpdateDialog.vue"
 import BatchWriteDialog from "../../components/datagrid/BatchWriteDialog.vue"
@@ -17,6 +18,7 @@ import {
 	writeRowsV1,
 } from "../../lib/tauriClient"
 import { DATA_REFRESH_KEY, TRIGGER_DATA_REFRESH_KEY } from "./explorerShared"
+import { buildDeleteRowsMutationRequest, buildUpdateRowsMutationRequest } from "./mutationGuards"
 
 const emit = defineEmits<(e: "request-export") => void>()
 
@@ -183,14 +185,23 @@ async function handleBatchWrite(rows: unknown[], mode: WriteDataMode) {
 
 const { execute: execUpdateRows, isLoading: isUpdatingRows } = useCommand("更新数据失败")
 
+async function confirmFullTableMutation(operation: "update" | "delete"): Promise<boolean> {
+	const actionLabel = operation === "update" ? "更新" : "删除"
+	return confirm(`当前条件会${actionLabel}整张表的数据。此操作影响范围很大，请确认是否继续。`)
+}
+
 async function handleBatchUpdate(
 	filter: string | undefined,
 	updates: Array<{ column: string; expr: string }>
 ) {
 	const tableId = activeTableId.value
 	if (!activeProfileId.value || !tableId) return
+	const request = buildUpdateRowsMutationRequest(tableId, filter, updates)
+	if (request.allowFullTable && !(await confirmFullTableMutation("update"))) {
+		return
+	}
 	await execUpdateRows(async () => {
-		unwrapEnvelope(await updateRowsV1({ tableId, filter, updates }))
+		unwrapEnvelope(await updateRowsV1(request))
 		setStatus("更新操作已提交")
 		showBatchUpdate.value = false
 		triggerDataRefresh()
@@ -204,8 +215,13 @@ const { execute: execDeleteRows, isLoading: isDeletingRows } = useCommand("删�
 async function handleBatchDelete(filter: string) {
 	const tableId = activeTableId.value
 	if (!activeProfileId.value || !tableId) return
+	const request = buildDeleteRowsMutationRequest(tableId, filter)
+	if (!request) return
+	if (request.allowFullTable && !(await confirmFullTableMutation("delete"))) {
+		return
+	}
 	await execDeleteRows(async () => {
-		unwrapEnvelope(await deleteRowsV1({ tableId, filter }))
+		unwrapEnvelope(await deleteRowsV1(request))
 		setStatus("删除操作已提交")
 		showBatchDelete.value = false
 		triggerDataRefresh()

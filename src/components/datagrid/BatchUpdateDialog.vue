@@ -63,10 +63,18 @@ watch(
 	>
 		<div class="space-y-4">
 			<div>
-				<label class="mb-1 block text-sm font-medium text-slate-600">
+				<label
+					for="batch-update-filter"
+					class="mb-1 block text-sm font-medium text-slate-600"
+				>
 					过滤条件（可选，不填则更新所有行）
 				</label>
-				<NInput v-model:value="filterExpr" placeholder="id = 1" size="small" />
+				<NInput
+					v-model:value="filterExpr"
+					placeholder="id = 1"
+					size="small"
+					input-id="batch-update-filter"
+				/>
 			</div>
 
 			<div>
@@ -85,12 +93,16 @@ watch(
 							placeholder="列名"
 							size="small"
 							class="w-36"
+							:input-id="`batch-update-column-${index}`"
+							:aria-label="`第 ${index + 1} 个更新列名`"
 						/>
 						<NInput
 							v-model:value="item.expr"
 							placeholder="表达式，例如 text || '_v2'"
 							size="small"
 							class="flex-1"
+							:input-id="`batch-update-expression-${index}`"
+							:aria-label="`第 ${index + 1} 个更新表达式`"
 						/>
 						<NButton
 							v-if="updateColumns.length > 1"

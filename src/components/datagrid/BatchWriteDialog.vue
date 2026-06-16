@@ -61,17 +61,33 @@ watch(
 		<div class="space-y-4">
 			<div class="flex items-end gap-3">
 				<div class="w-40">
-					<label class="mb-1 block text-sm font-medium text-slate-600">写入模式</label>
-					<NSelect v-model:value="writeMode" :options="writeModeOptions" size="small" />
+					<label
+						for="batch-write-mode"
+						class="mb-1 block text-sm font-medium text-slate-600"
+					>
+						写入模式
+					</label>
+					<NSelect
+						v-model:value="writeMode"
+						:options="writeModeOptions"
+						size="small"
+						input-id="batch-write-mode"
+					/>
 				</div>
 			</div>
 			<div>
-				<label class="mb-1 block text-sm font-medium text-slate-600">JSON 行数据</label>
+				<label
+					for="batch-write-rows"
+					class="mb-1 block text-sm font-medium text-slate-600"
+				>
+					JSON 行数据
+				</label>
 				<NInput
 					v-model:value="writeRowsText"
 					type="textarea"
 					:autosize="{ minRows: 6, maxRows: 14 }"
 					placeholder='[{"id": 1, "text": "hello", "vector": [0.1, 0.2, 0.3]}]'
+					input-id="batch-write-rows"
 				/>
 			</div>
 		</div>

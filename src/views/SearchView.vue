@@ -21,6 +21,12 @@ import {
 	vectorSearchV1,
 } from "../lib/tauriClient"
 import { compareValues, renderHeader } from "./explorer/explorerShared"
+import {
+	buildCombinedSearchRequest,
+	buildFilterQueryRequest,
+	buildFtsSearchRequest,
+	buildVectorSearchRequest,
+} from "./search/searchRequests"
 
 const {
 	profiles,
@@ -200,42 +206,28 @@ function handleKeydown(event: KeyboardEvent) {
 onMounted(() => window.addEventListener("keydown", handleKeydown))
 onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown))
 
-function parseVectorInputValue(value: string) {
-	const cleaned = value.replace(/[[\]]/g, " ")
-	const parts = cleaned.split(/[,\s]+/).filter(Boolean)
-	const numbers = parts.map((part) => Number(part))
-	if (!numbers.length || numbers.some((value) => Number.isNaN(value))) {
-		return null
-	}
-	return numbers
-}
-
-function parseVectorInput() {
-	return parseVectorInputValue(vectorText.value)
-}
-
-function parseCombinedVectorInput() {
-	return parseVectorInputValue(combinedVectorText.value)
-}
-
 async function runFilterQuery() {
 	const tableId = scopedActiveTableId.value
 	if (!tableId || isSearching.value) {
+		return
+	}
+	const candidate = buildFilterQueryRequest({
+		tableId,
+		filter: filterExpression.value,
+		projection: filterProjection.value,
+		limit: filterLimit.value,
+		offset: filterOffset.value,
+	})
+	if (!candidate.ok) {
+		resultError.value = candidate.message
+		clearMessages()
 		return
 	}
 	try {
 		isSearching.value = true
 		resultError.value = ""
 		clearMessages()
-		const response = unwrapEnvelope(
-			await queryFilterV1({
-				tableId,
-				filter: filterExpression.value,
-				projection: filterProjection.value.length ? filterProjection.value : undefined,
-				limit: filterLimit.value,
-				offset: filterOffset.value,
-			})
-		)
+		const response = unwrapEnvelope(await queryFilterV1(candidate.request))
 		if (response.chunk.format !== "json") {
 			resultError.value = "当前仅支持 JSON 数据块"
 			return
@@ -258,28 +250,27 @@ async function runVectorQuery() {
 	if (!tableId || isSearching.value) {
 		return
 	}
-	const vector = parseVectorInput()
-	if (!vector) {
-		resultError.value = "请输入有效向量（例如：0.1, 0.2, 0.3）"
+	const candidate = buildVectorSearchRequest({
+		tableId,
+		vectorText: vectorText.value,
+		column: vectorColumn.value,
+		topK: vectorTopK.value,
+		offset: vectorOffset.value,
+		projection: vectorProjection.value,
+		filter: vectorFilter.value,
+		nprobes: vectorNprobes.value,
+		refineFactor: vectorRefine.value,
+	})
+	if (!candidate.ok) {
+		resultError.value = candidate.message
+		clearMessages()
 		return
 	}
 	try {
 		isSearching.value = true
 		resultError.value = ""
 		clearMessages()
-		const response = unwrapEnvelope(
-			await vectorSearchV1({
-				tableId,
-				vector,
-				column: vectorColumn.value ?? undefined,
-				topK: vectorTopK.value,
-				offset: vectorOffset.value,
-				projection: vectorProjection.value.length ? vectorProjection.value : undefined,
-				filter: vectorFilter.value.trim() || undefined,
-				nprobes: vectorNprobes.value ?? undefined,
-				refineFactor: vectorRefine.value ?? undefined,
-			})
-		)
+		const response = unwrapEnvelope(await vectorSearchV1(candidate.request))
 		if (response.chunk.format !== "json") {
 			resultError.value = "当前仅支持 JSON 数据块"
 			return
@@ -302,21 +293,25 @@ async function runFtsQuery() {
 	if (!tableId || isSearching.value) {
 		return
 	}
+	const candidate = buildFtsSearchRequest({
+		tableId,
+		query: ftsQuery.value,
+		columns: ftsColumns.value,
+		limit: ftsLimit.value,
+		offset: ftsOffset.value,
+		projection: ftsProjection.value,
+		filter: ftsFilter.value,
+	})
+	if (!candidate.ok) {
+		resultError.value = candidate.message
+		clearMessages()
+		return
+	}
 	try {
 		isSearching.value = true
 		resultError.value = ""
 		clearMessages()
-		const response = unwrapEnvelope(
-			await ftsSearchV1({
-				tableId,
-				query: ftsQuery.value,
-				columns: ftsColumns.value.length ? ftsColumns.value : undefined,
-				limit: ftsLimit.value,
-				offset: ftsOffset.value,
-				projection: ftsProjection.value.length ? ftsProjection.value : undefined,
-				filter: ftsFilter.value.trim() || undefined,
-			})
-		)
+		const response = unwrapEnvelope(await ftsSearchV1(candidate.request))
 		if (response.chunk.format !== "json") {
 			resultError.value = "当前仅支持 JSON 数据块"
 			return
@@ -340,15 +335,22 @@ async function runCombinedQuery() {
 		return
 	}
 
-	const queryText = combinedQuery.value.trim()
-	const vectorInput = combinedVectorText.value.trim()
-	const vector = vectorInput ? parseCombinedVectorInput() : null
-	if (!queryText && !vectorInput) {
-		resultError.value = "请输入向量或查询文本"
-		return
-	}
-	if (vectorInput && !vector) {
-		resultError.value = "请输入有效向量（例如：0.1, 0.2, 0.3）"
+	const candidate = buildCombinedSearchRequest({
+		tableId,
+		query: combinedQuery.value,
+		vectorText: combinedVectorText.value,
+		vectorColumn: combinedVectorColumn.value,
+		columns: combinedColumns.value,
+		limit: combinedLimit.value,
+		offset: combinedOffset.value,
+		projection: combinedProjection.value,
+		filter: combinedFilter.value,
+		nprobes: combinedNprobes.value,
+		refineFactor: combinedRefine.value,
+	})
+	if (!candidate.ok) {
+		resultError.value = candidate.message
+		clearMessages()
 		return
 	}
 
@@ -356,21 +358,7 @@ async function runCombinedQuery() {
 		isSearching.value = true
 		resultError.value = ""
 		clearMessages()
-		const response = unwrapEnvelope(
-			await combinedSearchV1({
-				tableId,
-				vector: vector ?? undefined,
-				vectorColumn: combinedVectorColumn.value ?? undefined,
-				query: queryText || undefined,
-				columns: combinedColumns.value.length ? combinedColumns.value : undefined,
-				projection: combinedProjection.value.length ? combinedProjection.value : undefined,
-				filter: combinedFilter.value.trim() || undefined,
-				limit: combinedLimit.value,
-				offset: combinedOffset.value,
-				nprobes: combinedNprobes.value ?? undefined,
-				refineFactor: combinedRefine.value ?? undefined,
-			})
-		)
+		const response = unwrapEnvelope(await combinedSearchV1(candidate.request))
 		if (response.chunk.format !== "json") {
 			resultError.value = "当前仅支持 JSON 数据块"
 			return
