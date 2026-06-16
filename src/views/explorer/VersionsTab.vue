@@ -246,10 +246,17 @@ watch(
 		<NCard size="small" title="打开版本" class="shadow-sm">
 			<div class="grid gap-3 xl:grid-cols-6">
 				<div class="xl:col-span-2">
-					<label class="text-sm font-medium text-slate-600">版本号</label>
+					<label for="checkout-version-input" class="text-sm font-medium text-slate-600">
+						版本号
+					</label>
 					<NInputNumber
 						v-model:value="checkoutVersion"
 						:min="0"
+						:show-button="false"
+						:input-props="{
+							id: 'checkout-version-input',
+							'aria-label': '要打开的版本号',
+						}"
 						:disabled="!hasActiveTable"
 					/>
 				</div>
@@ -285,11 +292,18 @@ watch(
 					/>
 				</div>
 				<div class="xl:col-span-2">
-					<label class="text-sm font-medium text-slate-600">源版本（可选）</label>
+					<label for="clone-source-version-input" class="text-sm font-medium text-slate-600">
+						源版本（可选）
+					</label>
 					<NInputNumber
 						v-model:value="cloneSourceVersion"
 						:min="0"
 						placeholder="留空使用最新"
+						:show-button="false"
+						:input-props="{
+							id: 'clone-source-version-input',
+							'aria-label': '克隆源版本',
+						}"
 						:disabled="!hasActiveTable"
 					/>
 				</div>

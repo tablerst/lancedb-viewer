@@ -61,6 +61,8 @@ function nextPage(page: number, pageCount: number) {
 				<button
 					class="datagrid-statusbar-page-btn"
 					:disabled="page <= 1 || loading || disabled"
+					aria-label="上一页数据"
+					title="上一页数据"
 					@click="prevPage(page)"
 				>
 					‹
@@ -69,6 +71,8 @@ function nextPage(page: number, pageCount: number) {
 				<button
 					class="datagrid-statusbar-page-btn"
 					:disabled="page >= pageCount || loading || disabled"
+					aria-label="下一页数据"
+					title="下一页数据"
 					@click="nextPage(page, pageCount)"
 				>
 					›

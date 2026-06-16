@@ -19,6 +19,7 @@ import {
 	resolveNullable,
 	toFieldInput,
 } from "./explorerShared"
+import { formatSchemaDataType } from "./schemaTypes"
 
 defineEmits<(e: "drop-table") => void>()
 
@@ -29,7 +30,12 @@ const hasActiveTable = computed(() => Boolean(activeTableId.value))
 
 const schemaColumns: DataTableColumns<SchemaField> = [
 	{ title: () => renderHeader("字段"), key: "name", ellipsis: { tooltip: true } },
-	{ title: () => renderHeader("类型"), key: "dataType", ellipsis: { tooltip: true } },
+	{
+		title: () => renderHeader("类型"),
+		key: "dataType",
+		ellipsis: { tooltip: true },
+		render: (row) => formatSchemaDataType(row.dataType),
+	},
 	{
 		title: () => renderHeader("Nullable"),
 		key: "nullable",

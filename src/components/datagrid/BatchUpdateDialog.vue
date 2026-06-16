@@ -86,13 +86,13 @@ watch(
 					<div
 						v-for="(item, index) in updateColumns"
 						:key="`update-${index}`"
-						class="flex items-center gap-2"
+						class="grid gap-2 sm:grid-cols-[minmax(8rem,10rem)_minmax(0,1fr)_auto] sm:items-center"
 					>
 						<NInput
 							v-model:value="item.column"
 							placeholder="列名"
 							size="small"
-							class="w-36"
+							class="min-w-0"
 							:input-id="`batch-update-column-${index}`"
 							:aria-label="`第 ${index + 1} 个更新列名`"
 						/>
@@ -100,7 +100,7 @@ watch(
 							v-model:value="item.expr"
 							placeholder="表达式，例如 text || '_v2'"
 							size="small"
-							class="flex-1"
+							class="min-w-0"
 							:input-id="`batch-update-expression-${index}`"
 							:aria-label="`第 ${index + 1} 个更新表达式`"
 						/>
@@ -108,6 +108,7 @@ watch(
 							v-if="updateColumns.length > 1"
 							size="tiny"
 							quaternary
+							class="justify-self-start"
 							@click="removeColumn(index)"
 						>
 							移除

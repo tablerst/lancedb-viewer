@@ -9,6 +9,7 @@ export default defineConfig({
 			include: [
 				"src/composables/statusMessagePolicy.ts",
 				"src/views/explorer/mutationGuards.ts",
+				"src/views/explorer/schemaTypes.ts",
 				"src/views/explorer/versionMetadata.ts",
 				"src/views/search/searchRequests.ts",
 			],
