@@ -34,6 +34,8 @@ export type IndexTypeV1 =
 	| "ivf_hnsw_pq"
 	| "ivf_hnsw_sq"
 
+export type DistanceTypeV1 = "l2" | "cosine" | "dot" | "hamming"
+
 export type AuthDescriptor =
 	| { type: "none" }
 	| { type: "inline"; provider: string; params: Record<string, string> }
@@ -108,6 +110,11 @@ export interface IndexDefinitionV1 {
 	name: string
 	indexType: IndexTypeV1
 	columns: string[]
+	numIndexedRows?: number
+	numUnindexedRows?: number
+	distanceType?: DistanceTypeV1
+	numIndices?: number
+	loss?: number
 }
 
 export interface ListIndexesResponseV1 {
@@ -120,6 +127,15 @@ export interface CreateIndexRequestV1 {
 	indexType: IndexTypeV1
 	name?: string
 	replace?: boolean
+	distanceType?: DistanceTypeV1
+	numPartitions?: number
+	sampleRate?: number
+	maxIterations?: number
+	targetPartitionSize?: number
+	numSubVectors?: number
+	numBits?: number
+	numEdges?: number
+	efConstruction?: number
 }
 
 export interface CreateIndexResponseV1 {

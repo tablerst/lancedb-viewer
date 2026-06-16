@@ -121,6 +121,15 @@ pub enum IndexTypeV1 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DistanceTypeV1 {
+    L2,
+    Cosine,
+    Dot,
+    Hamming,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AuthDescriptor {
     None,
@@ -252,6 +261,16 @@ pub struct IndexDefinitionV1 {
     pub name: String,
     pub index_type: IndexTypeV1,
     pub columns: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_indexed_rows: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_unindexed_rows: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance_type: Option<DistanceTypeV1>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_indices: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loss: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,6 +289,24 @@ pub struct CreateIndexRequestV1 {
     pub name: Option<String>,
     #[serde(default)]
     pub replace: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance_type: Option<DistanceTypeV1>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_partitions: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample_rate: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_iterations: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_partition_size: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_sub_vectors: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_bits: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_edges: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ef_construction: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

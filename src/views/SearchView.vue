@@ -144,9 +144,34 @@ const resultSchema = ref<SchemaDefinition | null>(null)
 const resultNextOffset = ref<number | null>(null)
 const resultError = ref("")
 
+const searchMetadataFields = [
+	"_relevance_score",
+	"_distance",
+	"_score",
+	"_hybrid_rank",
+	"_hybrid_source",
+]
+
+const searchMetadataLabels: Record<string, string> = {
+	_relevance_score: "融合分数",
+	_distance: "向量距离",
+	_score: "全文分数",
+	_hybrid_rank: "融合排序",
+	_hybrid_source: "来源",
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
 const resultColumns = computed<DataTableColumns<Record<string, unknown>>>(() => {
 	const fields = resultSchema.value?.fields ?? scopedSchema.value?.fields ?? []
-	return fields.map((field) => ({
+	const fieldNames = new Set(fields.map((field) => field.name))
+	const firstRow = resultRows.value.find(isRecord)
+	const metadataFields = searchMetadataFields
+		.filter((name) => !fieldNames.has(name) && firstRow?.[name] !== undefined)
+		.map((name) => ({ name, dataType: "metadata", nullable: true, metadata: undefined }))
+	return [...fields, ...metadataFields].map((field) => ({
 		title: () => renderHeader(field.name),
 		key: field.name,
 		ellipsis: { tooltip: true },
@@ -154,6 +179,63 @@ const resultColumns = computed<DataTableColumns<Record<string, unknown>>>(() => 
 		render: (row) => renderCellValue(row[field.name]),
 	}))
 })
+
+const scoreSummaries = computed(() => {
+	const firstRow = resultRows.value.find(isRecord)
+	return searchMetadataFields.map((name) => ({
+		name,
+		label: searchMetadataLabels[name],
+		value: firstRow?.[name],
+	}))
+})
+
+const canGoPrevious = computed(() => {
+	switch (activeTab.value) {
+		case "filter":
+			return filterOffset.value > 0
+		case "combined":
+			return combinedOffset.value > 0
+		case "vector":
+			return vectorOffset.value > 0
+		case "fts":
+			return ftsOffset.value > 0
+		default:
+			return false
+	}
+})
+
+function getActiveLimit() {
+	switch (activeTab.value) {
+		case "filter":
+			return filterLimit.value
+		case "combined":
+			return combinedLimit.value
+		case "vector":
+			return vectorTopK.value
+		case "fts":
+			return ftsLimit.value
+		default:
+			return 50
+	}
+}
+
+function setActiveOffset(offset: number) {
+	const nextOffset = Math.max(0, offset)
+	switch (activeTab.value) {
+		case "filter":
+			filterOffset.value = nextOffset
+			break
+		case "combined":
+			combinedOffset.value = nextOffset
+			break
+		case "vector":
+			vectorOffset.value = nextOffset
+			break
+		case "fts":
+			ftsOffset.value = nextOffset
+			break
+	}
+}
 
 function resetResults() {
 	resultRows.value = []
@@ -194,6 +276,37 @@ function runActiveQuery() {
 			void runFtsQuery()
 			break
 	}
+}
+
+function goPreviousPage() {
+	if (!canGoPrevious.value || isSearching.value) {
+		return
+	}
+	const limit = getActiveLimit()
+	const currentOffset = (() => {
+		switch (activeTab.value) {
+			case "filter":
+				return filterOffset.value
+			case "combined":
+				return combinedOffset.value
+			case "vector":
+				return vectorOffset.value
+			case "fts":
+				return ftsOffset.value
+			default:
+				return 0
+		}
+	})()
+	setActiveOffset(currentOffset - limit)
+	runActiveQuery()
+}
+
+function goNextPage() {
+	if (resultNextOffset.value === null || isSearching.value) {
+		return
+	}
+	setActiveOffset(resultNextOffset.value)
+	runActiveQuery()
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -368,7 +481,7 @@ async function runCombinedQuery() {
 		resultNextOffset.value = response.nextOffset ?? null
 		setStatus(`已返回 ${response.chunk.rows.length} 行`)
 	} catch (error) {
-		const message = error instanceof Error ? error.message : "组合查询失败"
+		const message = error instanceof Error ? error.message : "混合检索失败"
 		resultError.value = message
 		setError(message)
 	} finally {
@@ -496,14 +609,14 @@ async function runCombinedQuery() {
 					</div>
 				</NTabPane>
 
-				<NTabPane name="combined" tab="组合查询">
+				<NTabPane name="combined" tab="混合检索">
 					<div class="grid gap-3 xl:grid-cols-6">
 						<div class="xl:col-span-3">
-							<label class="text-sm font-medium text-slate-600">全文查询（可选）</label>
+							<label class="text-sm font-medium text-slate-600">全文查询</label>
 							<NInput v-model:value="combinedQuery" placeholder="item 1" />
 						</div>
 						<div class="xl:col-span-3">
-							<label class="text-sm font-medium text-slate-600">向量输入（可选）</label>
+							<label class="text-sm font-medium text-slate-600">向量输入</label>
 							<NInput v-model:value="combinedVectorText" placeholder="0.1, 0.2, 0.3" />
 						</div>
 					</div>
@@ -559,7 +672,7 @@ async function runCombinedQuery() {
 					</div>
 					<div class="mt-3">
 						<NButton type="primary" :loading="isSearching" @click="runCombinedQuery">
-							组合查询
+							混合检索
 						</NButton>
 					</div>
 				</NTabPane>
@@ -673,9 +786,30 @@ async function runCombinedQuery() {
 			</NAlert>
 
 			<NCard size="small" title="结果" class="bg-slate-50/60 shadow-sm">
-				<div class="mb-2 flex items-center justify-between text-xs text-slate-500">
-					<span>返回行数：{{ resultRows.length }}</span>
-					<span v-if="resultNextOffset !== null">nextOffset: {{ resultNextOffset }}</span>
+				<div class="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+					<div class="flex flex-wrap items-center gap-2">
+						<span>返回行数：{{ resultRows.length }}</span>
+						<NTag
+							v-for="item in scoreSummaries"
+							:key="item.name"
+							size="small"
+							:bordered="false"
+						>
+							{{ item.label }}:
+							{{ item.value === undefined || item.value === null ? "—" : item.value }}
+						</NTag>
+					</div>
+					<NButtonGroup size="tiny">
+						<NButton :disabled="!canGoPrevious || isSearching" @click="goPreviousPage">
+							上一页
+						</NButton>
+						<NButton
+							:disabled="resultNextOffset === null || isSearching"
+							@click="goNextPage"
+						>
+							下一页
+						</NButton>
+					</NButtonGroup>
 				</div>
 				<DataResultTable
 					:columns="resultColumns"

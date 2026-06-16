@@ -1,101 +1,123 @@
-# LanceDB Viewer (LanceDB Studio)
+# LanceDB Viewer / LanceDB Studio
 
-基于 Tauri v2 + Vue 3 + Rust 的 LanceDB 桌面可视化工具。当前版本以 JSON 为主的 IPC v1 打通连接与 Schema 预览，同时保留后续 Arrow IPC 的扩展位。
+LanceDB Viewer is a Tauri v2 desktop app for inspecting and operating LanceDB
+databases. The frontend is Vue 3 + TypeScript, and the backend is Rust with
+LanceDB 0.23.1, Arrow, and Tauri IPC v1.
 
-近期目标：重构前端信息架构为“**深色全局主导航 + 可收缩连接侧边栏 + 右侧正文工作区**”，支持**多连接并行**、列表虚拟化，并用 TailwindCSS（CSS Transition/Animation）/Lucide 提升交互与视觉一致性。
+The current product shape is a work-focused database studio: a dark global
+navigation rail, a collapsible connection sidebar, and a right workspace for
+Explorer, Search, Credentials, and related management views.
 
-## 当前能力
+## Current Capabilities
 
-- 连接档案（profiles）持久化：`name`、`uri`、`storageOptions`
-- 连接 LanceDB：`connect_v1`
-- 列出表：`list_tables_v1`
-- 打开表并查看 Schema：`open_table_v1`、`get_schema_v1`
-- 数据扫描：`scan_v1` 支持 JSON/Arrow（Arrow 为 base64 IPC）
-- 资源浏览与数据闭环：Schema + 数据浏览（分页/列投影/过滤表达式）
-- 路由分区布局：资源浏览 / 检索工作台（占位）
-- 查询命令（后端可用）：`query_filter_v1`、`vector_search_v1`、`fts_search_v1`
+- Connection profiles with `name`, `uri`, `storageOptions`, consistency options,
+  and an auth descriptor.
+- LanceDB connection lifecycle through `connect_v1` / `disconnect_v1`.
+- Table discovery, open table, schema inspection, data scan, write, update,
+  delete, import, export, optimize, and version operations.
+- Explorer data browsing through `scan_v1`.
+  - Default UI path requests `format: "arrow"`.
+  - Frontend decodes Arrow IPC with `apache-arrow`.
+  - JSON fallback is used when Arrow decoding or compatibility fails.
+  - Paging remains `limit` / `offset` / `nextOffset`.
+- Search workspace for filter, vector, full-text, and hybrid search.
+  - `combined_search_v1` is a true hybrid path: vector query + FTS query +
+    LanceDB `RRFReranker` with rank normalization.
+  - Hybrid search requires both query text and vector input.
+  - Result metadata may include `_relevance_score`, `_distance`, `_score`,
+    `_hybrid_rank`, and `_hybrid_source`; UI displays blank cells when LanceDB
+    does not emit a score column for a specific result path.
+- Schema, Versions, and Indexes tabs for table management.
+  - Index listing displays index stats when LanceDB reports them.
+  - Index creation exposes key controls: columns, index type, name, replace,
+    distance type, IVF parameters, PQ/RQ parameters, and HNSW parameters.
+- Mutation guardrails for broad update/delete requests. Full-table mutation
+  requires explicit confirmation and `allowFullTable: true`.
 
-## UI 重构（进行中）
+## Auth Contract
 
-当前交互形态：
+Supported auth modes in this version:
 
-- 深色 PrimaryNav：
-	- 固定图标导航：资源浏览、检索、凭证库、能力地图
-	- 当前路由使用左侧细线与浅色底标记
-- 连接 Sidebar（可收缩）：
-	- 顶部快捷操作：筛选（Local/S3/Remote 等）、新建连接（Modal）
-	- 连接项卡片：状态灯、连接类型 Tag、展开表树
-	- 列表虚拟化：连接列表/表列表在规模增大时保持流畅
-- 右侧正文工作区：
-	- 选中连接：展示连接信息与连接状态
-	- 选中表：展示 Schema + 数据表格，并支持搜索/过滤/列投影/分页
-	- 排序策略（MVP）：仅做前端排序（对当前已加载的数据片段排序）
+- `none`
+- `inline`
 
-动效与图标：动效使用 TailwindCSS（如 `transition-*` / `duration-*` / `ease-*`）实现折叠/展开与局部过渡；图标统一使用 `lucide-vue-next`。
+`secret_ref` is present in the IPC/profile schema for forward compatibility, but
+it is intentionally disabled in this version. The frontend returns a friendly
+`not_implemented` envelope before invoking IPC, and the backend also rejects
+`secret_ref` with `NotImplemented`. Full Stronghold-backed `secret_ref` connect
+support is a later version item.
 
-## IPC v1 约定（JSON-first）
+## IPC v1 Notes
 
-- 所有命令返回 `ResultEnvelope<T>`，包含 `apiVersion` 与 `ok` 标记
-- 扫描数据通过 `DataChunk` 返回：支持 `format: "json"` 与 `format: "arrow"`
-- Arrow IPC 目前仅用于 `scan_v1`，查询类命令仍为 JSON
+- All commands return `ResultEnvelope<T>` with `apiVersion`, `ok`, `data`, and
+  optional `error`.
+- `DataChunk` supports `format: "json"` and `format: "arrow"`.
+- `scan_v1` is the Arrow-first large-data boundary.
+- Search results currently return JSON chunks.
+- IPC payloads are additive where possible so frontend and backend can evolve
+  without breaking existing callers.
 
-## 连接档案结构
+## Development
 
-`ConnectProfile`（前端/后端对齐）：
+Install dependencies:
 
-- `name`: 显示名
-- `uri`: `/path/to/db`、`s3://bucket/path`、`db://host:port` 等
-- `storageOptions`: 作为扩展键值对传入 LanceDB（与官方文档一致）
-- `options.readConsistencyIntervalSeconds`: 读取一致性间隔（可选）
-- `auth`: 认证描述（支持 inline/secret_ref，推荐 Stronghold）
+```bash
+bun install
+```
 
-## 开发
+Run the frontend dev server:
 
-- 安装依赖：`bun install`
-- 前端开发：`bun run dev`
-- 桌面联调：`bun tauri dev`
-- 运行测试：`bun run test`（避免与 Bun 内置 `bun test` 语义混淆）
-- 代码格式化：`bun run format`
-- 前端代码调整完成后：及时运行 `bun run lint` 或 `bun run check` 查看是否有错误（需要纯检查可用 `bun run ci`）
+```bash
+bun run dev
+```
 
-### Rust 后端测试
+Run the desktop app:
 
-- 集成测试目录：`src-tauri/tests/`
-- 执行：`cargo test --manifest-path src-tauri/Cargo.toml`
-- 测试默认优先使用仓库根目录的 `sample-db`；若不存在，会自动生成临时库
+```bash
+bun tauri dev
+```
 
-### 示例数据库
+Run frontend tests:
 
-- 生成示例库：`cargo run --manifest-path src-tauri/Cargo.toml --bin seed_db -- sample-db`
-- 可选参数：`--table <name>`、`--rows <count>`（默认表名 `items`，默认 50 行）
+```bash
+bun run test
+bun run test:coverage
+```
 
-## 安全与权限
+Build frontend assets:
 
-当前 `capabilities/default.json` 开启：
+```bash
+bun run build
+```
 
-- `core:default`
-- `opener:default`
-- `store:default`
-- `stronghold:default`
+Run Rust tests:
 
-并包含：
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml
+```
 
-- `log:default`
-- `dialog:default`
+Generate a sample database:
 
-凭证已通过 Stronghold 存储，连接档案仅保存 `secret_ref` 引用与元数据。
-凭证管理页可查看 Stronghold 条目并清理未引用凭证；连接档案更新/删除会自动回收未引用凭证。
+```bash
+cargo run --manifest-path src-tauri/Cargo.toml --bin seed_db -- sample-db
+```
 
-## Roadmap
+Optional sample DB flags include `--table <name>` and `--rows <count>`.
 
-- UI Shell：可收缩 Sidebar + 右侧正文（多连接并行、虚拟列表、TailwindCSS 动效、Lucide 图标）
-- Search 工作台：前端接入 `query_filter_v1` / `vector_search_v1` / `fts_search_v1`，并复用结果表格能力
-- Data Explorer：补齐“前端排序/列宽/列固定/快捷筛选”等常用交互（对齐 DBeaver 类体验）
-- Arrow IPC：`scan_v1` 已启用，后续扩展到查询结果
+## Validation Guidance
 
-## 参考文档
+- Use `bun run test` for frontend utilities, composables, and request builders.
+- Use `bun run build` when Vue components, IPC types, or TypeScript contracts
+  changed.
+- Use targeted `bunx biome ci <files...>` for touched files while the repository
+  still has unrelated formatting drift.
+- Use `cargo test --manifest-path src-tauri/Cargo.toml` for backend and IPC
+  command changes.
 
-- LanceDB connect/URI：https://lancedb.github.io/lancedb/js/functions/connect/
-- LanceDB storage options：https://docs.lancedb.com/storage/configuration
-- Tauri Store 插件：https://v2.tauri.app/plugin/store/
-- Tauri Stronghold 插件：https://v2.tauri.app/plugin/stronghold/
+## Reference Docs
+
+- `UI_DESIGN.md`: current UI architecture and interaction contracts.
+- `dev_docs/exec/review-stabilization-2026-06-15.md`: active stabilization
+  execution plan and closeout evidence.
+- LanceDB docs: https://docs.lancedb.com/
+- Tauri docs: https://v2.tauri.app/

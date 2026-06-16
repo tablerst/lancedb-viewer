@@ -12,6 +12,7 @@ import type {
 	CombinedSearchRequestV1,
 	ConnectProfile,
 	ConnectResponseV1,
+	CreateIndexRequestV1,
 	CreateIndexResponseV1,
 	CreateTableResponseV1,
 	DeleteRowsRequestV1,
@@ -28,7 +29,6 @@ import type {
 	GetTableVersionResponseV1,
 	ImportDataRequestV1,
 	ImportDataResponseV1,
-	IndexTypeV1,
 	ListIndexesResponseV1,
 	ListTablesResponseV1,
 	ListVersionsRequestV1,
@@ -91,6 +91,16 @@ export function unwrapEnvelope<T>(envelope: ResultEnvelope<T>): T {
 export async function connectV1(
 	profile: ConnectProfile
 ): Promise<ResultEnvelope<ConnectResponseV1>> {
+	if (profile.auth?.type === "secret_ref") {
+		return {
+			apiVersion: "v1",
+			ok: false,
+			error: {
+				code: "not_implemented",
+				message: "secret_ref auth is not supported in this version; use no auth or inline auth",
+			},
+		}
+	}
 	return invokeV1("connect_v1", { request: { profile } })
 }
 
@@ -126,13 +136,9 @@ export async function listIndexesV1(
 	return invokeV1("list_indexes_v1", { request: { tableId } })
 }
 
-export async function createIndexV1(request: {
-	tableId: string
-	columns: string[]
-	indexType: IndexTypeV1
-	name?: string
-	replace?: boolean
-}): Promise<ResultEnvelope<CreateIndexResponseV1>> {
+export async function createIndexV1(
+	request: CreateIndexRequestV1
+): Promise<ResultEnvelope<CreateIndexResponseV1>> {
 	return invokeV1("create_index_v1", { request })
 }
 

@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Cursor, Write};
 use std::sync::Arc;
@@ -25,10 +24,13 @@ use lancedb::index::vector::{
 };
 use lancedb::index::{Index, IndexType};
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
+use lancedb::rerankers::rrf::RRFReranker;
+use lancedb::rerankers::NormalizeMethod;
 use lancedb::table::{
     AddDataMode, ColumnAlteration, CompactionOptions, Duration as LanceDuration,
     NewColumnTransform, OptimizeAction,
 };
+use lancedb::DistanceType;
 use lancedb::Table;
 use log::{debug, error, info, trace, warn};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
@@ -42,18 +44,18 @@ use crate::ipc::v1::{
     CloneTableResponseV1, ColumnAlterationInput, CombinedSearchRequestV1, ConnectRequestV1,
     ConnectResponseV1, CreateIndexRequestV1, CreateIndexResponseV1, CreateTableRequestV1,
     CreateTableResponseV1, DataChunk, DataFileFormatV1, DataFormat, DeleteRowsRequestV1,
-    DeleteRowsResponseV1, DisconnectRequestV1, DisconnectResponseV1, DropColumnsRequestV1,
-    DropColumnsResponseV1, DropIndexRequestV1, DropIndexResponseV1, DropTableRequestV1,
-    DropTableResponseV1, ErrorCode, ExportDataRequestV1, ExportDataResponseV1, FieldDataType,
-    FtsSearchRequestV1, GetSchemaRequestV1, GetTableVersionRequestV1, GetTableVersionResponseV1,
-    ImportDataRequestV1, ImportDataResponseV1, IndexDefinitionV1, IndexTypeV1, JsonChunk,
-    ListIndexesRequestV1, ListIndexesResponseV1, ListTablesRequestV1, ListTablesResponseV1,
-    ListVersionsRequestV1, ListVersionsResponseV1, OpenTableRequestV1, OptimizeActionV1,
-    OptimizeTableRequestV1, OptimizeTableResponseV1, QueryFilterRequestV1, QueryResponseV1,
-    RenameTableRequestV1, RenameTableResponseV1, ResultEnvelope, ScanRequestV1, ScanResponseV1,
-    SchemaDefinition, SchemaDefinitionInput, SchemaFieldInput, TableHandle, TableInfo,
-    UpdateRowsRequestV1, UpdateRowsResponseV1, VectorSearchRequestV1, VersionInfoV1, WriteDataMode,
-    WriteRowsRequestV1, WriteRowsResponseV1,
+    DeleteRowsResponseV1, DisconnectRequestV1, DisconnectResponseV1, DistanceTypeV1,
+    DropColumnsRequestV1, DropColumnsResponseV1, DropIndexRequestV1, DropIndexResponseV1,
+    DropTableRequestV1, DropTableResponseV1, ErrorCode, ExportDataRequestV1, ExportDataResponseV1,
+    FieldDataType, FtsSearchRequestV1, GetSchemaRequestV1, GetTableVersionRequestV1,
+    GetTableVersionResponseV1, ImportDataRequestV1, ImportDataResponseV1, IndexDefinitionV1,
+    IndexTypeV1, JsonChunk, ListIndexesRequestV1, ListIndexesResponseV1, ListTablesRequestV1,
+    ListTablesResponseV1, ListVersionsRequestV1, ListVersionsResponseV1, OpenTableRequestV1,
+    OptimizeActionV1, OptimizeTableRequestV1, OptimizeTableResponseV1, QueryFilterRequestV1,
+    QueryResponseV1, RenameTableRequestV1, RenameTableResponseV1, ResultEnvelope, ScanRequestV1,
+    ScanResponseV1, SchemaDefinition, SchemaDefinitionInput, SchemaField, SchemaFieldInput,
+    TableHandle, TableInfo, UpdateRowsRequestV1, UpdateRowsResponseV1, VectorSearchRequestV1,
+    VersionInfoV1, WriteDataMode, WriteRowsRequestV1, WriteRowsResponseV1,
 };
 use crate::state::AppState;
 
@@ -88,6 +90,44 @@ fn batches_to_arrow_ipc_base64(batches: &[RecordBatch], schema: &Schema) -> Resu
 
     writer.finish().map_err(|error| error.to_string())?;
     Ok(general_purpose::STANDARD.encode(buffer))
+}
+
+fn ensure_schema_field(schema: &mut SchemaDefinition, name: &str, data_type: &str, nullable: bool) {
+    if schema.fields.iter().any(|field| field.name == name) {
+        return;
+    }
+
+    schema.fields.push(SchemaField {
+        name: name.to_string(),
+        data_type: data_type.to_string(),
+        nullable,
+        metadata: None,
+    });
+}
+
+fn annotate_hybrid_rows(
+    rows: &mut [serde_json::Value],
+    schema: &mut SchemaDefinition,
+    offset: usize,
+) {
+    ensure_schema_field(schema, "_hybrid_rank", "UInt64", false);
+    ensure_schema_field(schema, "_hybrid_source", "Utf8", false);
+
+    for (index, row) in rows.iter_mut().enumerate() {
+        let Some(object) = row.as_object_mut() else {
+            continue;
+        };
+        object.insert(
+            "_hybrid_rank".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(
+                offset.saturating_add(index).saturating_add(1),
+            )),
+        );
+        object.insert(
+            "_hybrid_source".to_string(),
+            serde_json::Value::String("rrf".to_string()),
+        );
+    }
 }
 
 fn truncate_batches(batches: &[RecordBatch], limit: usize) -> Vec<RecordBatch> {
@@ -741,19 +781,212 @@ fn to_index_type_v1(index_type: &IndexType) -> IndexTypeV1 {
     }
 }
 
-fn to_lancedb_index(index_type: &IndexTypeV1) -> Index {
-    match index_type {
+fn to_distance_type_v1(distance_type: &DistanceType) -> DistanceTypeV1 {
+    match distance_type {
+        DistanceType::L2 => DistanceTypeV1::L2,
+        DistanceType::Cosine => DistanceTypeV1::Cosine,
+        DistanceType::Dot => DistanceTypeV1::Dot,
+        DistanceType::Hamming => DistanceTypeV1::Hamming,
+        _ => DistanceTypeV1::L2,
+    }
+}
+
+fn to_lancedb_distance_type(distance_type: &DistanceTypeV1) -> DistanceType {
+    match distance_type {
+        DistanceTypeV1::L2 => DistanceType::L2,
+        DistanceTypeV1::Cosine => DistanceType::Cosine,
+        DistanceTypeV1::Dot => DistanceType::Dot,
+        DistanceTypeV1::Hamming => DistanceType::Hamming,
+    }
+}
+
+fn apply_ivf_flat_params(
+    mut builder: IvfFlatIndexBuilder,
+    request: &CreateIndexRequestV1,
+) -> IvfFlatIndexBuilder {
+    if let Some(distance_type) = request.distance_type.as_ref() {
+        builder = builder.distance_type(to_lancedb_distance_type(distance_type));
+    }
+    if let Some(value) = request.num_partitions {
+        builder = builder.num_partitions(value);
+    }
+    if let Some(value) = request.sample_rate {
+        builder = builder.sample_rate(value);
+    }
+    if let Some(value) = request.max_iterations {
+        builder = builder.max_iterations(value);
+    }
+    if let Some(value) = request.target_partition_size {
+        builder = builder.target_partition_size(value);
+    }
+    builder
+}
+
+fn apply_ivf_sq_params(
+    mut builder: IvfSqIndexBuilder,
+    request: &CreateIndexRequestV1,
+) -> IvfSqIndexBuilder {
+    if let Some(distance_type) = request.distance_type.as_ref() {
+        builder = builder.distance_type(to_lancedb_distance_type(distance_type));
+    }
+    if let Some(value) = request.num_partitions {
+        builder = builder.num_partitions(value);
+    }
+    if let Some(value) = request.sample_rate {
+        builder = builder.sample_rate(value);
+    }
+    if let Some(value) = request.max_iterations {
+        builder = builder.max_iterations(value);
+    }
+    if let Some(value) = request.target_partition_size {
+        builder = builder.target_partition_size(value);
+    }
+    builder
+}
+
+fn apply_ivf_pq_params(
+    mut builder: IvfPqIndexBuilder,
+    request: &CreateIndexRequestV1,
+) -> IvfPqIndexBuilder {
+    if let Some(distance_type) = request.distance_type.as_ref() {
+        builder = builder.distance_type(to_lancedb_distance_type(distance_type));
+    }
+    if let Some(value) = request.num_partitions {
+        builder = builder.num_partitions(value);
+    }
+    if let Some(value) = request.sample_rate {
+        builder = builder.sample_rate(value);
+    }
+    if let Some(value) = request.max_iterations {
+        builder = builder.max_iterations(value);
+    }
+    if let Some(value) = request.target_partition_size {
+        builder = builder.target_partition_size(value);
+    }
+    if let Some(value) = request.num_sub_vectors {
+        builder = builder.num_sub_vectors(value);
+    }
+    if let Some(value) = request.num_bits {
+        builder = builder.num_bits(value);
+    }
+    builder
+}
+
+fn apply_ivf_rq_params(
+    mut builder: IvfRqIndexBuilder,
+    request: &CreateIndexRequestV1,
+) -> IvfRqIndexBuilder {
+    if let Some(distance_type) = request.distance_type.as_ref() {
+        builder = builder.distance_type(to_lancedb_distance_type(distance_type));
+    }
+    if let Some(value) = request.num_partitions {
+        builder = builder.num_partitions(value);
+    }
+    if let Some(value) = request.sample_rate {
+        builder = builder.sample_rate(value);
+    }
+    if let Some(value) = request.max_iterations {
+        builder = builder.max_iterations(value);
+    }
+    if let Some(value) = request.target_partition_size {
+        builder = builder.target_partition_size(value);
+    }
+    if let Some(value) = request.num_bits {
+        builder = builder.num_bits(value);
+    }
+    builder
+}
+
+fn apply_ivf_hnsw_pq_params(
+    mut builder: IvfHnswPqIndexBuilder,
+    request: &CreateIndexRequestV1,
+) -> IvfHnswPqIndexBuilder {
+    if let Some(distance_type) = request.distance_type.as_ref() {
+        builder = builder.distance_type(to_lancedb_distance_type(distance_type));
+    }
+    if let Some(value) = request.num_partitions {
+        builder = builder.num_partitions(value);
+    }
+    if let Some(value) = request.sample_rate {
+        builder = builder.sample_rate(value);
+    }
+    if let Some(value) = request.max_iterations {
+        builder = builder.max_iterations(value);
+    }
+    if let Some(value) = request.target_partition_size {
+        builder = builder.target_partition_size(value);
+    }
+    if let Some(value) = request.num_edges {
+        builder = builder.num_edges(value);
+    }
+    if let Some(value) = request.ef_construction {
+        builder = builder.ef_construction(value);
+    }
+    if let Some(value) = request.num_sub_vectors {
+        builder = builder.num_sub_vectors(value);
+    }
+    if let Some(value) = request.num_bits {
+        builder = builder.num_bits(value);
+    }
+    builder
+}
+
+fn apply_ivf_hnsw_sq_params(
+    mut builder: IvfHnswSqIndexBuilder,
+    request: &CreateIndexRequestV1,
+) -> IvfHnswSqIndexBuilder {
+    if let Some(distance_type) = request.distance_type.as_ref() {
+        builder = builder.distance_type(to_lancedb_distance_type(distance_type));
+    }
+    if let Some(value) = request.num_partitions {
+        builder = builder.num_partitions(value);
+    }
+    if let Some(value) = request.sample_rate {
+        builder = builder.sample_rate(value);
+    }
+    if let Some(value) = request.max_iterations {
+        builder = builder.max_iterations(value);
+    }
+    if let Some(value) = request.target_partition_size {
+        builder = builder.target_partition_size(value);
+    }
+    if let Some(value) = request.num_edges {
+        builder = builder.num_edges(value);
+    }
+    if let Some(value) = request.ef_construction {
+        builder = builder.ef_construction(value);
+    }
+    builder
+}
+
+fn to_lancedb_index(request: &CreateIndexRequestV1) -> Index {
+    match request.index_type {
         IndexTypeV1::Auto => Index::Auto,
         IndexTypeV1::BTree => Index::BTree(BTreeIndexBuilder::default()),
         IndexTypeV1::Bitmap => Index::Bitmap(BitmapIndexBuilder::default()),
         IndexTypeV1::LabelList => Index::LabelList(LabelListIndexBuilder::default()),
         IndexTypeV1::Fts => Index::FTS(FtsIndexBuilder::default()),
-        IndexTypeV1::IvfFlat => Index::IvfFlat(IvfFlatIndexBuilder::default()),
-        IndexTypeV1::IvfSq => Index::IvfSq(IvfSqIndexBuilder::default()),
-        IndexTypeV1::IvfPq => Index::IvfPq(IvfPqIndexBuilder::default()),
-        IndexTypeV1::IvfRq => Index::IvfRq(IvfRqIndexBuilder::default()),
-        IndexTypeV1::IvfHnswPq => Index::IvfHnswPq(IvfHnswPqIndexBuilder::default()),
-        IndexTypeV1::IvfHnswSq => Index::IvfHnswSq(IvfHnswSqIndexBuilder::default()),
+        IndexTypeV1::IvfFlat => Index::IvfFlat(apply_ivf_flat_params(
+            IvfFlatIndexBuilder::default(),
+            request,
+        )),
+        IndexTypeV1::IvfSq => {
+            Index::IvfSq(apply_ivf_sq_params(IvfSqIndexBuilder::default(), request))
+        }
+        IndexTypeV1::IvfPq => {
+            Index::IvfPq(apply_ivf_pq_params(IvfPqIndexBuilder::default(), request))
+        }
+        IndexTypeV1::IvfRq => {
+            Index::IvfRq(apply_ivf_rq_params(IvfRqIndexBuilder::default(), request))
+        }
+        IndexTypeV1::IvfHnswPq => Index::IvfHnswPq(apply_ivf_hnsw_pq_params(
+            IvfHnswPqIndexBuilder::default(),
+            request,
+        )),
+        IndexTypeV1::IvfHnswSq => Index::IvfHnswSq(apply_ivf_hnsw_sq_params(
+            IvfHnswSqIndexBuilder::default(),
+            request,
+        )),
     }
 }
 
@@ -1114,14 +1347,31 @@ pub async fn list_indexes_v1(
         }
     };
 
-    let indexes = index_configs
-        .into_iter()
-        .map(|config| IndexDefinitionV1 {
+    let mut indexes = Vec::new();
+    for config in index_configs {
+        let stats = match table.index_stats(&config.name).await {
+            Ok(stats) => stats,
+            Err(error) => {
+                warn!(
+                    "list_indexes_v1 failed to read index stats table_id={} index={} error={}",
+                    request.table_id, config.name, error
+                );
+                None
+            }
+        };
+        indexes.push(IndexDefinitionV1 {
             name: config.name,
             index_type: to_index_type_v1(&config.index_type),
             columns: config.columns,
-        })
-        .collect::<Vec<_>>();
+            num_indexed_rows: stats.as_ref().map(|stats| stats.num_indexed_rows),
+            num_unindexed_rows: stats.as_ref().map(|stats| stats.num_unindexed_rows),
+            distance_type: stats
+                .as_ref()
+                .and_then(|stats| stats.distance_type.as_ref().map(to_distance_type_v1)),
+            num_indices: stats.as_ref().and_then(|stats| stats.num_indices),
+            loss: stats.as_ref().and_then(|stats| stats.loss),
+        });
+    }
 
     info!(
         "list_indexes_v1 ok table_id={} indexes={} elapsed_ms={}",
@@ -1179,7 +1429,7 @@ pub async fn create_index_v1(
         return ResultEnvelope::err(ErrorCode::NotFound, "table not found");
     };
 
-    let index = to_lancedb_index(&request.index_type);
+    let index = to_lancedb_index(&request);
     let mut builder = table.create_index(&columns, index).replace(request.replace);
     if let Some(name) = resolved_name.as_ref() {
         builder = builder.name(name.clone());
@@ -2962,14 +3212,28 @@ pub async fn combined_search_v1(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    if !has_vector && query_text.is_none() {
+    if !has_vector || query_text.is_none() {
         warn!(
-            "combined_search_v1 missing vector and query table_id={}",
+            "combined_search_v1 missing hybrid input table_id={} has_vector={} has_query={}",
+            request.table_id,
+            has_vector,
+            query_text.is_some()
+        );
+        return ResultEnvelope::err(
+            ErrorCode::InvalidArgument,
+            "hybrid search requires both vector and query text; use vector_search_v1 or fts_search_v1 for single-mode search",
+        );
+    }
+    let query_text = query_text.unwrap_or_default().to_string();
+
+    if request.vector.as_ref().map(Vec::is_empty).unwrap_or(true) {
+        warn!(
+            "combined_search_v1 empty vector table_id={}",
             request.table_id
         );
         return ResultEnvelope::err(
             ErrorCode::InvalidArgument,
-            "vector or query text is required",
+            "hybrid search requires a non-empty vector",
         );
     }
 
@@ -3002,7 +3266,7 @@ pub async fn combined_search_v1(
 
     let limit = request.limit.unwrap_or(50);
     let offset = request.offset.unwrap_or(0);
-    let fetch_limit = limit.saturating_add(offset);
+    let query_limit = limit.saturating_add(1);
     let projection = request
         .projection
         .as_ref()
@@ -3017,123 +3281,82 @@ pub async fn combined_search_v1(
         }
     });
 
-    let mut merged_rows: Vec<serde_json::Value> = Vec::new();
-    let mut seen = HashSet::new();
-    let mut result_schema: Option<SchemaDefinition> = None;
-
-    if has_vector {
-        let vector = request.vector.clone().unwrap_or_default();
-        let mut vector_query = match table.query().nearest_to(vector) {
-            Ok(query) => query,
-            Err(error) => {
-                error!(
-                    "combined_search_v1 invalid vector query table_id={} error={}",
-                    request.table_id, error
-                );
-                return ResultEnvelope::err(ErrorCode::InvalidArgument, error.to_string());
-            }
-        };
-
-        if let Some(column) = request
-            .vector_column
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            vector_query = vector_query.column(column);
-        }
-        if let Some(nprobes) = request.nprobes {
-            vector_query = vector_query.nprobes(nprobes);
-        }
-        if let Some(refine_factor) = request.refine_factor {
-            vector_query = vector_query.refine_factor(refine_factor);
-        }
-
-        let options = QueryOptions {
-            projection: projection.clone(),
-            filter: filter.clone(),
-            limit: Some(fetch_limit),
-            offset: None,
-        };
-
-        let query = apply_query_options(vector_query, &options);
-        let (rows, schema) = match execute_query_json(query, fallback_schema.clone()).await {
-            Ok(result) => result,
-            Err(error) => {
-                error!(
-                    "combined_search_v1 vector query failed table_id={} error={}",
-                    request.table_id, error
-                );
-                return ResultEnvelope::err(ErrorCode::Internal, error);
-            }
-        };
-        result_schema = Some(schema);
-        for row in rows {
-            let key = serde_json::to_string(&row).unwrap_or_default();
-            if seen.insert(key) {
-                merged_rows.push(row);
-            }
+    let mut fts_query = FullTextSearchQuery::new(query_text);
+    if let Some(columns) = request.columns.as_ref() {
+        if !columns.is_empty() {
+            fts_query = match fts_query.with_columns(columns) {
+                Ok(query) => query,
+                Err(error) => {
+                    error!(
+                        "combined_search_v1 invalid columns table_id={} error={}",
+                        request.table_id, error
+                    );
+                    return ResultEnvelope::err(ErrorCode::InvalidArgument, error.to_string());
+                }
+            };
         }
     }
 
-    if let Some(query_text) = query_text {
-        let mut fts_query = FullTextSearchQuery::new(query_text.to_string());
-        if let Some(columns) = request.columns.as_ref() {
-            if !columns.is_empty() {
-                fts_query = match fts_query.with_columns(columns) {
-                    Ok(query) => query,
-                    Err(error) => {
-                        error!(
-                            "combined_search_v1 invalid columns table_id={} error={}",
-                            request.table_id, error
-                        );
-                        return ResultEnvelope::err(ErrorCode::InvalidArgument, error.to_string());
-                    }
-                };
-            }
+    let mut hybrid_query = match table.query().nearest_to(request.vector.unwrap_or_default()) {
+        Ok(query) => query,
+        Err(error) => {
+            error!(
+                "combined_search_v1 invalid vector query table_id={} error={}",
+                request.table_id, error
+            );
+            return ResultEnvelope::err(ErrorCode::InvalidArgument, error.to_string());
         }
+    };
 
-        let options = QueryOptions {
-            projection: projection.clone(),
-            filter: filter.clone(),
-            limit: Some(fetch_limit),
-            offset: None,
-        };
-
-        let query = apply_query_options(table.query().full_text_search(fts_query), &options);
-        let (rows, schema) = match execute_query_json(query, fallback_schema.clone()).await {
-            Ok(result) => result,
-            Err(error) => {
-                error!(
-                    "combined_search_v1 fts query failed table_id={} error={}",
-                    request.table_id, error
-                );
-                return ResultEnvelope::err(ErrorCode::Internal, error);
-            }
-        };
-        if result_schema.is_none() {
-            result_schema = Some(schema);
-        }
-        for row in rows {
-            let key = serde_json::to_string(&row).unwrap_or_default();
-            if seen.insert(key) {
-                merged_rows.push(row);
-            }
-        }
+    if let Some(column) = request
+        .vector_column
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        hybrid_query = hybrid_query.column(column);
+    }
+    if let Some(nprobes) = request.nprobes {
+        hybrid_query = hybrid_query.nprobes(nprobes);
+    }
+    if let Some(refine_factor) = request.refine_factor {
+        hybrid_query = hybrid_query.refine_factor(refine_factor);
     }
 
-    let total_rows = merged_rows.len();
-    let next_offset = if total_rows > offset.saturating_add(limit) {
+    let options = QueryOptions {
+        projection,
+        filter,
+        limit: Some(query_limit),
+        offset: Some(offset),
+    };
+    let query = apply_query_options(
+        hybrid_query
+            .full_text_search(fts_query)
+            .rerank(Arc::new(RRFReranker::default()))
+            .norm(NormalizeMethod::Rank),
+        &options,
+    );
+    let (mut rows, mut schema) = match execute_query_json(query, fallback_schema).await {
+        Ok(result) => result,
+        Err(error) => {
+            error!(
+                "combined_search_v1 hybrid query failed table_id={} error={}",
+                request.table_id, error
+            );
+            return ResultEnvelope::err(ErrorCode::Internal, error);
+        }
+    };
+
+    let has_more = rows.len() > limit;
+    if has_more {
+        rows.truncate(limit);
+    }
+    annotate_hybrid_rows(&mut rows, &mut schema, offset);
+    let next_offset = if has_more {
         Some(offset.saturating_add(limit))
     } else {
         None
     };
-    let rows = merged_rows
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect::<Vec<_>>();
-    let schema = result_schema.unwrap_or(fallback_schema);
 
     info!(
         "combined_search_v1 ok table_id={} rows={} elapsed_ms={}",

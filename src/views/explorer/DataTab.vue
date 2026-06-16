@@ -10,6 +10,7 @@ import { useDataGridColumns } from "../../components/datagrid/useDataGridColumns
 import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
 import type { WriteDataMode } from "../../ipc/v1"
+import { decodeArrowChunk } from "../../lib/arrowDecoder"
 import {
 	deleteRowsV1,
 	scanV1,
@@ -46,6 +47,7 @@ const dataRows = ref<Record<string, unknown>[]>([])
 const nextOffset = ref<number | null>(null)
 const loadTimeMs = ref<number | null>(null)
 const showAdvancedFilter = ref(false)
+const transportStatus = ref("")
 
 // ── Batch operation modals ─────────────────────────────
 
@@ -62,7 +64,6 @@ async function runScan(queryParams?: Partial<DataGridQueryParams>) {
 	const scanOffset = queryParams?.offset ?? offset.value
 	const scanLimit = queryParams?.limit ?? limit.value
 
-	// Build filter from column filters + global filter
 	let filter: string | undefined
 	if (queryParams?.columnFilters && schema.value) {
 		const gf = (queryParams.globalFilter ?? globalFilter.value).trim()
@@ -79,26 +80,60 @@ async function runScan(queryParams?: Partial<DataGridQueryParams>) {
 		const response = unwrapEnvelope(
 			await scanV1({
 				tableId,
-				format: "json",
+				format: "arrow",
 				filter,
 				limit: scanLimit,
 				offset: scanOffset,
 			})
 		)
 		loadTimeMs.value = performance.now() - startTime
-		if (response.chunk.format !== "json") {
-			scanError.value = "当前仅支持 JSON 数据块"
+		if (response.chunk.format === "arrow") {
+			const decoded = decodeArrowChunk(response.chunk)
+			dataRows.value = decoded.rows
+			nextOffset.value = response.nextOffset ?? null
+			offset.value = scanOffset
+			limit.value = scanLimit
+			transportStatus.value = "Arrow IPC"
+			setStatus(`已通过 Arrow IPC 加载 ${decoded.rows.length} 行数据`)
 			return
 		}
+
 		dataRows.value = response.chunk.rows as Record<string, unknown>[]
 		nextOffset.value = response.nextOffset ?? null
 		offset.value = scanOffset
 		limit.value = scanLimit
-		setStatus(`已加载 ${response.chunk.rows.length} 行数据`)
-	} catch (error) {
-		const message = error instanceof Error ? error.message : "扫描数据失败"
-		scanError.value = message
-		setError(message)
+		transportStatus.value = "JSON"
+		setStatus(`已通过 JSON 加载 ${response.chunk.rows.length} 行数据`)
+	} catch {
+		try {
+			const fallbackStarted = performance.now()
+			const fallback = unwrapEnvelope(
+				await scanV1({
+					tableId,
+					format: "json",
+					filter,
+					limit: scanLimit,
+					offset: scanOffset,
+				})
+			)
+			loadTimeMs.value = performance.now() - fallbackStarted
+			if (fallback.chunk.format !== "json") {
+				scanError.value = "当前数据块无法在表格中显示"
+				transportStatus.value = "unsupported"
+				return
+			}
+			dataRows.value = fallback.chunk.rows as Record<string, unknown>[]
+			nextOffset.value = fallback.nextOffset ?? null
+			offset.value = scanOffset
+			limit.value = scanLimit
+			transportStatus.value = "Arrow 解码失败，已回退 JSON"
+			setStatus(`已回退 JSON 加载 ${fallback.chunk.rows.length} 行数据`)
+		} catch (fallbackError) {
+			const message = fallbackError instanceof Error ? fallbackError.message : "扫描数据失败"
+			scanError.value = message
+			transportStatus.value = ""
+			setError(message)
+		}
 	} finally {
 		isScanning.value = false
 	}
@@ -236,6 +271,7 @@ watch(activeTableId, () => {
 	nextOffset.value = null
 	scanError.value = ""
 	loadTimeMs.value = null
+	transportStatus.value = ""
 	clearMessages()
 	globalFilter.value = ""
 	if (activeTableId.value) {
@@ -252,6 +288,12 @@ watch(dataRefreshTrigger, () => {
 
 <template>
 	<div class="flex h-full flex-col">
+		<div
+			v-if="transportStatus"
+			class="border-b border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-500"
+		>
+			传输：{{ transportStatus }}
+		</div>
 		<!-- DataGrid (browse + inline edit) -->
 		<DataGrid
 			:columns="columns"

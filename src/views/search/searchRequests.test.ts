@@ -90,49 +90,18 @@ describe("search request builders", () => {
 		expect(result).toEqual({ ok: false, message: "请输入查询文本" })
 	})
 
-	it("accepts combined search when either query text or vector input exists", () => {
+	it("accepts combined search only when query text and vector input both exist", () => {
 		expect(
 			buildCombinedSearchRequest({
 				tableId: "tbl",
 				query: "hello",
-				vectorText: "",
-				vectorColumn: null,
-				columns: ["text"],
-				limit: 20,
-				offset: 0,
-				projection: [],
-				filter: " category = 'note' ",
-				nprobes: null,
-				refineFactor: null,
-			})
-		).toEqual({
-			ok: true,
-			request: {
-				tableId: "tbl",
-				vector: undefined,
-				vectorColumn: undefined,
-				query: "hello",
-				columns: ["text"],
-				projection: undefined,
-				filter: "category = 'note'",
-				limit: 20,
-				offset: 0,
-				nprobes: undefined,
-				refineFactor: undefined,
-			},
-		})
-
-		expect(
-			buildCombinedSearchRequest({
-				tableId: "tbl",
-				query: "",
 				vectorText: "0.1, 0.2",
 				vectorColumn: "vector",
-				columns: [],
+				columns: ["text"],
 				limit: 20,
 				offset: 0,
 				projection: ["id"],
-				filter: "",
+				filter: " category = 'note' ",
 				nprobes: 8,
 				refineFactor: null,
 			})
@@ -142,10 +111,10 @@ describe("search request builders", () => {
 				tableId: "tbl",
 				vector: [0.1, 0.2],
 				vectorColumn: "vector",
-				query: undefined,
-				columns: undefined,
+				query: "hello",
+				columns: ["text"],
 				projection: ["id"],
-				filter: undefined,
+				filter: "category = 'note'",
 				limit: 20,
 				offset: 0,
 				nprobes: 8,
@@ -154,7 +123,7 @@ describe("search request builders", () => {
 		})
 	})
 
-	it("rejects combined search with no inputs or invalid vector input", () => {
+	it("rejects combined search without both inputs or with invalid vector input", () => {
 		expect(
 			buildCombinedSearchRequest({
 				tableId: "tbl",
@@ -169,12 +138,28 @@ describe("search request builders", () => {
 				nprobes: null,
 				refineFactor: null,
 			})
-		).toEqual({ ok: false, message: "请输入向量或查询文本" })
+		).toEqual({ ok: false, message: "混合检索需要同时输入查询文本和向量" })
 
 		expect(
 			buildCombinedSearchRequest({
 				tableId: "tbl",
-				query: "",
+				query: "hello",
+				vectorText: "",
+				vectorColumn: null,
+				columns: [],
+				limit: 20,
+				offset: 0,
+				projection: [],
+				filter: "",
+				nprobes: null,
+				refineFactor: null,
+			})
+		).toEqual({ ok: false, message: "混合检索需要同时输入查询文本和向量" })
+
+		expect(
+			buildCombinedSearchRequest({
+				tableId: "tbl",
+				query: "hello",
 				vectorText: "oops",
 				vectorColumn: null,
 				columns: [],

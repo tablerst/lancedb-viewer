@@ -7,12 +7,12 @@ use crate::ipc::v1::{
     DeleteRowsResponseV1, DisconnectRequestV1, DisconnectResponseV1, DropColumnsRequestV1,
     DropColumnsResponseV1, DropIndexRequestV1, DropIndexResponseV1, DropTableRequestV1,
     DropTableResponseV1, ExportDataRequestV1, ExportDataResponseV1, FtsSearchRequestV1,
-    GetSchemaRequestV1, GetTableVersionRequestV1, GetTableVersionResponseV1,
-    ImportDataRequestV1, ImportDataResponseV1, ListIndexesRequestV1, ListIndexesResponseV1,
-    ListTablesRequestV1, ListTablesResponseV1, ListVersionsRequestV1, ListVersionsResponseV1,
-    OpenTableRequestV1, OptimizeTableRequestV1, OptimizeTableResponseV1, QueryFilterRequestV1,
-    QueryResponseV1, RenameTableRequestV1, RenameTableResponseV1, ResultEnvelope, ScanRequestV1,
-    ScanResponseV1, SchemaDefinition, TableHandle, UpdateRowsRequestV1, UpdateRowsResponseV1,
+    GetSchemaRequestV1, GetTableVersionRequestV1, GetTableVersionResponseV1, ImportDataRequestV1,
+    ImportDataResponseV1, ListIndexesRequestV1, ListIndexesResponseV1, ListTablesRequestV1,
+    ListTablesResponseV1, ListVersionsRequestV1, ListVersionsResponseV1, OpenTableRequestV1,
+    OptimizeTableRequestV1, OptimizeTableResponseV1, QueryFilterRequestV1, QueryResponseV1,
+    RenameTableRequestV1, RenameTableResponseV1, ResultEnvelope, ScanRequestV1, ScanResponseV1,
+    SchemaDefinition, TableHandle, UpdateRowsRequestV1, UpdateRowsResponseV1,
     VectorSearchRequestV1, WriteRowsRequestV1, WriteRowsResponseV1,
 };
 use crate::services::v1 as services_v1;

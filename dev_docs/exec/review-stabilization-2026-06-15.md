@@ -1,194 +1,182 @@
 # Review Stabilization 2026-06-15
 
-This execution note tracks the repo-side follow-up for the Agenta version
-`Review Stabilization 2026-06-15`. Agenta remains the recovery ledger; this file
-owns implementation sequencing and design decisions that are too detailed for
-task descriptions.
+本文件记录 Agenta version `Review Stabilization 2026-06-15` 的 repo 侧执行状态。
+Agenta 只作为 recovery ledger；具体实现顺序、设计取舍、验证矩阵以本文件为准。
 
-## Current Pass: LDBREV-01 / LDBREV-02 / LDBREV-05
+## Lane Rules
 
-Scope:
+- 保留现有 Agenta task tree，不新增 child task，不迁移到新 version。
+- `LDBREV-01`、`LDBREV-02`、`LDBREV-08` 保持 `done`。
+- 剩余推进顺序：`LDBREV-04` -> `LDBREV-03` -> `LDBREV-06` ->
+  `LDBREV-05` -> `LDBREV-07` -> `LDBREV-00` closeout。
+- 采用完整边界关闭：子集完成只写 finding；满足 exit condition 后才标 `done`。
+- 每个任务关闭前先更新本文件，再写 Agenta conclusion note、更新状态并 readback。
 
-- Restore the red Rust CRUD/vector write test.
-- Support JSON row writes for LanceDB fixed-size float vectors.
-- Add backend destructive mutation guardrails.
-- Protect the new IPC payload contract with focused tests.
+## Prior Closed Work
 
-Implemented decisions:
+`LDBREV-01` / `LDBREV-02` / `LDBREV-08` 已关闭，保留的关键事实：
 
-- `write_rows_v1` still accepts JSON rows as the IPC write format.
-- Tables without fixed-size float vector fields continue through Arrow's JSON
-  reader.
-- Tables with `FixedSizeList<Float32, N>` fields use a backend manual
-  JSON-to-Arrow conversion path for the schema types currently exposed by IPC
-  v1.
-- Unsupported Arrow types fail with `InvalidArgument` and a field-specific
-  message instead of falling through to the Arrow JSON reader.
-- `update_rows_v1` and `delete_rows_v1` reject empty or trivially full-table
-  filters by default.
-- Full-table mutation requires explicit `allowFullTable: true` in the IPC
-  request.
+- JSON row write 支持 fixed-size float vector 的后端转换路径。
+- `update_rows_v1` / `delete_rows_v1` 对空过滤和明显全表过滤保留 guardrail。
+- Search 空输入本地校验、跨路由 transient error 清理、中文 locale、基础 a11y
+  和窄屏侧栏策略已完成。
 
-Merge/rebase drift and repair on 2026-06-16:
+## Current Pass 2026-06-16
 
-- The backend guardrail and IPC types survived the merge.
-- The old root `src/views/ExplorerView.vue` confirmation path did not survive
-  the later Explorer split into `src/views/explorer/ExplorerView.vue` and
-  `src/views/explorer/DataTab.vue`.
-- `src/views/explorer/mutationGuards.ts` now owns the frontend broad-mutation
-  request decision for the current split Explorer flow.
-- `DataTab.vue` now prompts before empty-filter batch update and trivially broad
-  update/delete filters, and only sends `allowFullTable: true` after
-  confirmation.
-- `LDBREV-02` can be closed again after Agenta readback records this repair.
+### LDBREV-04: True Hybrid Search
 
-Validation:
+实现状态：repo 侧完成，待最终验证后关闭 Agenta task。
 
-- `cargo test --manifest-path src-tauri/Cargo.toml`
-- `bun run test`
-- `bun run build`
-- 2026-06-16 drift check: the commands above still pass, but targeted
-  `bunx biome ci` on touched frontend files reports formatting drift in the
-  current split Explorer/DataGrid files.
-- 2026-06-16 repair check: `bun run test`, `bun run build`,
-  `cargo test --manifest-path src-tauri/Cargo.toml`, and targeted
-  `bunx biome ci src/views/explorer/DataTab.vue
-  src/views/explorer/mutationGuards.ts
-  src/views/explorer/mutationGuards.test.ts` passed.
+已落地：
 
-Known validation caveat:
+- `combined_search_v1` 保持 IPC command 名不变，但语义改为 true hybrid。
+- 后端要求 query text 和 vector 同时存在；vector-only / text-only 直接返回
+  `InvalidArgument`，不再隐式拼接或降级。
+- 使用 LanceDB 0.23.1 hybrid query：
+  - `nearest_to(vector)`
+  - `full_text_search(query)`
+  - `RRFReranker`
+  - `NormalizeMethod::Rank`
+- 移除旧的 JSON row 字符串去重、vector/FTS 两路结果拼接逻辑。
+- 响应 schema/rows 增加 hybrid metadata：
+  - LanceDB emitted: `_relevance_score`，以及在具体路径可用时的 `_distance` /
+    `_score`
+  - app annotation: `_hybrid_rank`、`_hybrid_source`
+- Search UI 文案从“组合查询”改为“混合检索”。
+- Search UI 显示融合分数、向量距离、全文分数、融合排序、来源；缺失列显示为空。
+- Search paging 使用上一页/下一页按钮，内部保留 offset 语义。
 
-- `bun run ci` still reports pre-existing repository formatting drift outside
-  this focused fix. Use targeted Biome checks for touched frontend files until
-  the wider formatting drift is handled separately.
-- `src/views/explorer/mutationGuards.test.ts` covers the current request
-  decision, including blank update filters, trivially broad filters, and normal
-  filtered update/delete requests. It remains a pure decision-layer test rather
-  than a mounted dialog interaction test because the project does not currently
-  include Vue component test utilities.
+关键文件：
 
-## 2026-06-16 UI Repair Pass: LDBREV-08 / LDBREV-07 / LDBREV-06
+- `src-tauri/src/services/v1.rs`
+- `src-tauri/tests/commands_v1.rs`
+- `src/views/SearchView.vue`
+- `src/views/search/searchRequests.ts`
+- `src/views/search/searchRequests.test.ts`
 
-Implemented decisions:
+### LDBREV-03: Arrow-First Data Browsing
 
-- `LDBREV-08` now owns the Search input validation and transient error lifecycle
-  repair. `src/views/search/searchRequests.ts` builds Search IPC payloads only
-  after local validation succeeds, so blank filter queries, blank FTS queries,
-  invalid vectors, and empty combined searches return local actionable messages
-  before invoking the backend.
-- `src/views/SearchView.vue` delegates Search request shaping to the helper
-  module and clears stale global messages when local validation fails.
-- `src/composables/statusMessagePolicy.ts` makes the route-change cleanup rule
-  explicit; `src/App.vue` clears transient global messages after route changes
-  so a Search error banner does not leak into unrelated workspaces.
-- `LDBREV-07` received a bounded UI/a11y batch: Naive UI Chinese locale/date
-  locale, corrected `index.html` language/title/favicon metadata, icon-only
-  DataGrid toolbar labels, column menu labels, batch dialog input labels, and a
-  compact-width rule that hides the connection sidebar below the medium
-  breakpoint.
-- `LDBREV-06` received the Versions metadata sub-slice: version metadata now
-  renders as structured key/value entries with an empty state instead of a raw
-  comma-joined timeline string.
+实现状态：repo 侧完成，待最终验证后关闭 Agenta task。
 
-Validation:
+已落地：
 
-- `bun run test`
-- `bun run test:coverage` passed with the key decision files above the configured
-  80% thresholds.
-- `bun run build`
-- Targeted touched-surface Biome CI passed:
-  `bunx biome ci .gitignore biome.json package.json vitest.config.ts index.html
-  src/App.vue src/components/datagrid/BatchDeleteDialog.vue
-  src/components/datagrid/BatchUpdateDialog.vue
-  src/components/datagrid/BatchWriteDialog.vue
-  src/components/datagrid/DataGrid.vue
-  src/components/datagrid/DataGridToolbar.vue src/views/SearchView.vue
-  src/views/explorer/VersionsTab.vue src/views/explorer/explorerShared.ts
-  src/views/explorer/versionMetadata.ts
-  src/views/explorer/versionMetadata.test.ts
-  src/views/search/searchRequests.ts src/views/search/searchRequests.test.ts
-  src/composables/statusMessagePolicy.ts
-  src/composables/statusMessagePolicy.test.ts
-  src/views/explorer/mutationGuards.ts
-  src/views/explorer/mutationGuards.test.ts`
-- 2026-06-16 Tauri WebDriver smoke:
-  - Real Tauri WebView title is `LanceDB Studio` and document language is
-    `zh-CN`.
-  - Empty Search filter submit shows local validation `请输入过滤表达式`.
-  - Backend text `filter expression cannot be empty` does not appear.
-  - Navigating from Search to Credentials clears the transient validation state.
-  - Versions metadata renders with `.version-metadata-grid` /
-    `.version-metadata-entry`.
-  - DataGrid toolbar and column menu controls expose explicit `aria-label`
-    values in the real DOM.
+- 新增前端依赖 `apache-arrow`。
+- 新增 `src/lib/arrowDecoder.ts`，把 Arrow IPC base64 解码为
+  `DataGrid` 可消费的 rows/schema。
+- `DataTab` 默认调用 `scan_v1({ format: "arrow" })`。
+- Arrow 成功时显示 `传输：Arrow IPC`。
+- Arrow 解码或兼容失败时回退到 `scan_v1({ format: "json" })`，并显示
+  `Arrow 解码失败，已回退 JSON`。
+- 保留 `limit` / `offset` / `nextOffset`，本轮不引入 cursor。
 
-Remaining boundaries:
+关键文件：
 
-- Full `bun run ci` still fails on unrelated pre-existing formatting drift in
-  files outside this repair batch, including `src/components/DataResultTable.vue`
-  and `src/ipc/v1.ts`.
-- `LDBREV-08` is closed in Agenta after rendered Tauri smoke evidence.
-- `LDBREV-07` remains a broader polish/doc/auth-contract task; this pass only
-  closes the UI inspection issues mapped to its a11y/locale/responsive subset.
-- `LDBREV-06` remains broader than the Versions metadata display slice.
+- `package.json`
+- `bun.lock`
+- `src/lib/arrowDecoder.ts`
+- `src/lib/arrowDecoder.test.ts`
+- `src/views/explorer/DataTab.vue`
 
-## LDBREV-03 Data Browsing Slice
+### LDBREV-06: LanceDB Management Surface
 
-Do not start with a large UI rewrite. The next data browsing slice should first
-settle transport and paging contracts:
+实现状态：repo 侧完成，待最终验证后关闭 Agenta task。
 
-- Keep `scan_v1` as the first large-data boundary.
-- Preserve JSON as the ergonomic default for small pages.
-- Treat Arrow IPC as the scalable transport for larger pages and complex Arrow
-  types.
-- Add an explicit frontend capability check for whether a result page is JSON,
-  Arrow IPC, or unsupported for inline rendering.
-- Add generated local fixtures for large row count and wide schema before
-  changing table presentation.
-- Keep current `limit` / `offset` semantics until a cursor contract is designed.
+已落地：
 
-Acceptance evidence for the next slice:
+- `IndexDefinitionV1` 增加 index stats 字段：
+  `numIndexedRows`、`numUnindexedRows`、`distanceType`、`numIndices`、`loss`。
+- `CreateIndexRequestV1` 增加常用 LanceDB 参数：
+  `distanceType`、`numPartitions`、`sampleRate`、`maxIterations`、
+  `targetPartitionSize`、`numSubVectors`、`numBits`、`numEdges`、
+  `efConstruction`。
+- 后端 `list_indexes_v1` 调用 LanceDB `index_stats` 并把可用统计返回给 UI。
+- 后端 `create_index_v1` 将常用参数映射到 IVF / PQ / RQ / HNSW index builder。
+- Indexes UI 显示索引状态、距离类型、分片/索引数、loss，并提供关键创建参数。
+- FTS 创建本轮只暴露列、名称、replace；tokenizer 等更深参数不在本轮开放。
+- 早前 Versions metadata 已改为结构化 key/value 展示。
 
-- Backend test proving large scans do not require a single all-row JSON payload.
-- Frontend smoke or unit coverage proving JSON and Arrow result variants route
-  through separate display branches.
-- UI behavior that keeps wide rows inspectable without losing table context.
+关键文件：
 
-## LDBREV-04 Search Semantics Slice
+- `src-tauri/src/ipc/v1.rs`
+- `src-tauri/src/services/v1.rs`
+- `src/ipc/v1.ts`
+- `src/lib/tauriClient.ts`
+- `src/views/explorer/IndexesTab.vue`
 
-The current "combined" search should not be described as true hybrid ranking
-unless the backend exposes enough score/source/rank metadata to justify that
-term.
+### LDBREV-05: Test Matrix
 
-Next decision point:
+实现状态：repo 侧完成，待最终验证后关闭 Agenta task。
 
-- Option A: implement LanceDB-supported hybrid/rank-fusion semantics and expose
-  normalized fields in the IPC response.
-- Option B: rename the behavior to an honest union/comparison mode and display
-  source attribution for vector and FTS results.
+新增/扩展覆盖：
 
-Minimum contract before UI expansion:
+- `combined_search_v1` true hybrid 输入要求、返回 metadata、rank/source annotation。
+- Arrow IPC decode utility，包含 real Arrow IPC stream、wide-ish values、vector-like typed array。
+- IPC wrapper payload for index creation tuning fields。
+- `secret_ref` unsupported frontend wrapper behavior。
+- 保留 mutation guard tests。
 
-- Search responses must expose source, rank, and score metadata when those
-  fields are available.
-- Duplicate handling must be deterministic and covered by backend tests.
-- README and UI copy must use the same term as the backend contract.
+关键文件：
 
-## Later Order
+- `src-tauri/tests/commands_v1.rs`
+- `src/lib/arrowDecoder.test.ts`
+- `src/lib/tauriClient.test.ts`
+- `src/views/search/searchRequests.test.ts`
 
-- 2026-06-16 Tauri UI inspection mapping:
-  - `dev_docs/exec/ui-inspection-2026-06-16.md` records the real WebView巡检结果.
-    The temporary `tmp-ui-inspection-*.png` screenshots were cleaned up after
-    the closeout evidence was attached to the related Agenta tasks.
-  - 新增 `LDBREV-08` 处理 Search 空过滤输入直达后端、以及全局错误 banner
-    跨路由残留的问题；这不是 `LDBREV-04` 的搜索排序/语义问题。
-  - Naive UI 中文 locale、`index.html` 元数据、icon-only 按钮
-    `aria-label`、批量弹窗输入可访问标签、640px 窄窗口策略归入
-    `LDBREV-07`.
-  - Versions tab 元数据 raw key/value 展示归入 `LDBREV-06`.
-- Start `LDBREV-06` only after the schema/search contract is stable enough to
-  decide which index controls and metadata panels are durable.
-- Use `LDBREV-07` as the final polish/doc/auth-contract pass, not as a blocker
-  for the write safety work above.
-- Do not close the Agenta version until the remaining tasks are either complete
-  or intentionally moved into a newer active lane.
+### LDBREV-07: UX / Auth / Docs Closeout
+
+实现状态：repo 侧完成，待最终验证后关闭 Agenta task。
+
+已落地：
+
+- Frontend `connectV1` 对 `secret_ref` 返回 friendly `not_implemented` envelope，
+  不再调用后端。
+- Backend 仍保留 `secret_ref` 的 `NotImplemented` 防线。
+- README 更新 search、Arrow、auth、validation 当前状态。
+- UI_DESIGN 更新 Search、Arrow-first data browsing、management surface、auth UX
+  和 validation checklist。
+- 本执行文档替换过期描述，记录当前 lane 关闭规则和验收状态。
+- Search pagination 从裸 `nextOffset` 改为上一页/下一页控件。
+
+关键文件：
+
+- `src/lib/tauriClient.ts`
+- `src/lib/tauriClient.test.ts`
+- `src/views/SearchView.vue`
+- `README.md`
+- `UI_DESIGN.md`
+- `dev_docs/exec/review-stabilization-2026-06-15.md`
+
+## Validation Matrix
+
+2026-06-16 最终验证：
+
+- `cargo test --manifest-path src-tauri/Cargo.toml`：通过。
+  - Rust unit: 1 passed。
+  - `tests/commands_v1.rs`: 9 passed。
+- `bun run test`：通过，7 files / 26 tests。
+- `bun run test:coverage`：通过，overall statements 90%，branches 84.78%，
+  functions 100%，lines 90%。
+- `bun run build`：通过。
+  - 仅保留 Vite 常规提示：Browserslist data 过旧、主 bundle 超过 500 kB。
+- Targeted touched-surface Biome：通过。
+  - `bunx biome ci package.json src/components.d.ts src/ipc/v1.ts
+    src/lib/tauriClient.ts src/lib/tauriClient.test.ts src/lib/arrowDecoder.ts
+    src/lib/arrowDecoder.test.ts src/views/SearchView.vue
+    src/views/search/searchRequests.ts src/views/search/searchRequests.test.ts
+    src/views/explorer/DataTab.vue src/views/explorer/IndexesTab.vue
+    README.md UI_DESIGN.md
+    dev_docs/exec/review-stabilization-2026-06-15.md`
+- `git diff --check`：通过；仅输出 Windows checkout 的 LF -> CRLF 提示。
+
+全量 `bun run ci` 仍不是本 lane 的关闭要求；此前已记录 repo-wide formatting drift
+超出本轮范围。本轮只要求 touched files 的 Biome CI 通过。
+
+## Closeout Notes
+
+全部子任务关闭后，`LDBREV-00` conclusion 需要记录：
+
+- 最终验证矩阵。
+- 剩余风险。
+- 是否存在迁移到新 version 的工作。
+- 若没有新的 active lane，不迁移本 version；仅在后续明确开启新 lane 时再调整
+  project default version。

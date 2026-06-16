@@ -123,10 +123,10 @@ export function buildCombinedSearchRequest(input: {
 	const query = optionalText(input.query)
 	const vectorText = optionalText(input.vectorText)
 	const vector = vectorText ? parseVectorInputValue(vectorText) : null
-	if (!query && !vectorText) {
-		return { ok: false, message: "请输入向量或查询文本" }
+	if (!query || !vectorText) {
+		return { ok: false, message: "混合检索需要同时输入查询文本和向量" }
 	}
-	if (vectorText && !vector) {
+	if (!vector) {
 		return { ok: false, message: "请输入有效向量（例如：0.1, 0.2, 0.3）" }
 	}
 	return {

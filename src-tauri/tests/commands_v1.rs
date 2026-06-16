@@ -12,13 +12,13 @@ use lancedb::index::Index;
 use tempfile::tempdir;
 
 use lancedb_viewer_lib::ipc::v1::{
-    AddColumnsRequestV1, AlterColumnsRequestV1, ColumnAlterationInput, ConnectProfile,
-    ConnectRequestV1, CreateIndexRequestV1, CreateTableRequestV1, DataFormat, DeleteRowsRequestV1,
-    DropColumnsRequestV1, DropIndexRequestV1, DropTableRequestV1, ErrorCode, FieldDataType,
-    FtsSearchRequestV1, GetSchemaRequestV1, IndexTypeV1, ListIndexesRequestV1, ListTablesRequestV1,
-    OpenTableRequestV1, QueryFilterRequestV1, ScanRequestV1, SchemaDefinitionInput,
-    SchemaFieldInput, UpdateColumnInputV1, UpdateRowsRequestV1, VectorSearchRequestV1,
-    WriteDataMode, WriteRowsRequestV1,
+    AddColumnsRequestV1, AlterColumnsRequestV1, ColumnAlterationInput, CombinedSearchRequestV1,
+    ConnectProfile, ConnectRequestV1, CreateIndexRequestV1, CreateTableRequestV1, DataFormat,
+    DeleteRowsRequestV1, DropColumnsRequestV1, DropIndexRequestV1, DropTableRequestV1, ErrorCode,
+    FieldDataType, FtsSearchRequestV1, GetSchemaRequestV1, IndexTypeV1, ListIndexesRequestV1,
+    ListTablesRequestV1, OpenTableRequestV1, QueryFilterRequestV1, ScanRequestV1,
+    SchemaDefinitionInput, SchemaFieldInput, UpdateColumnInputV1, UpdateRowsRequestV1,
+    VectorSearchRequestV1, WriteDataMode, WriteRowsRequestV1,
 };
 use lancedb_viewer_lib::services::v1 as services_v1;
 use lancedb_viewer_lib::state::AppState;
@@ -694,6 +694,84 @@ async fn query_filter_vector_search_and_fts() {
         }
         _ => panic!("expected json chunk"),
     }
+
+    let hybrid_ok = services_v1::combined_search_v1(
+        &harness.state,
+        CombinedSearchRequestV1 {
+            table_id: harness.table_id.clone(),
+            vector: Some(vec![0.0, 0.1, 0.2]),
+            vector_column: Some("vector".to_string()),
+            query: Some("item 1".to_string()),
+            columns: Some(vec!["text".to_string()]),
+            limit: Some(5),
+            offset: Some(0),
+            projection: None,
+            filter: None,
+            nprobes: None,
+            refine_factor: None,
+        },
+    )
+    .await;
+
+    assert!(
+        hybrid_ok.ok,
+        "combined_search should succeed: {:?}",
+        hybrid_ok.error
+    );
+    let hybrid_ok = hybrid_ok.data.expect("hybrid data");
+    match hybrid_ok.chunk {
+        lancedb_viewer_lib::ipc::v1::DataChunk::Json(chunk) => {
+            assert!(!chunk.rows.is_empty());
+            assert!(
+                chunk
+                    .schema
+                    .fields
+                    .iter()
+                    .any(|field| field.name == "_relevance_score"),
+                "hybrid search should expose fused relevance metadata"
+            );
+            assert!(
+                chunk
+                    .schema
+                    .fields
+                    .iter()
+                    .any(|field| field.name == "_hybrid_rank"),
+                "hybrid search should expose result rank metadata"
+            );
+            assert!(
+                chunk
+                    .schema
+                    .fields
+                    .iter()
+                    .any(|field| field.name == "_hybrid_source"),
+                "hybrid search should expose result source metadata"
+            );
+            assert!(
+                chunk
+                    .rows
+                    .iter()
+                    .any(|row| row.get("_relevance_score").is_some()),
+                "hybrid search rows should include fused relevance scores"
+            );
+            assert_eq!(
+                chunk
+                    .rows
+                    .first()
+                    .and_then(|row| row.get("_hybrid_rank"))
+                    .and_then(serde_json::Value::as_u64),
+                Some(1)
+            );
+            assert_eq!(
+                chunk
+                    .rows
+                    .first()
+                    .and_then(|row| row.get("_hybrid_source"))
+                    .and_then(serde_json::Value::as_str),
+                Some("rrf")
+            );
+        }
+        _ => panic!("expected json chunk"),
+    }
 }
 
 #[tokio::test]
@@ -718,6 +796,15 @@ async fn list_create_drop_indexes() {
             index_type: IndexTypeV1::BTree,
             name: Some("id_btree".to_string()),
             replace: true,
+            distance_type: None,
+            num_partitions: None,
+            sample_rate: None,
+            max_iterations: None,
+            target_partition_size: None,
+            num_sub_vectors: None,
+            num_bits: None,
+            num_edges: None,
+            ef_construction: None,
         },
     )
     .await;
@@ -819,6 +906,54 @@ async fn validates_error_conditions() {
     assert!(!empty_vector.ok);
     assert_eq!(
         empty_vector.error.expect("error").code,
+        ErrorCode::InvalidArgument
+    );
+
+    let vector_only_hybrid = services_v1::combined_search_v1(
+        &harness.state,
+        CombinedSearchRequestV1 {
+            table_id: harness.table_id.clone(),
+            vector: Some(vec![0.0, 0.1, 0.2]),
+            vector_column: Some("vector".to_string()),
+            query: None,
+            columns: None,
+            limit: None,
+            offset: None,
+            projection: None,
+            filter: None,
+            nprobes: None,
+            refine_factor: None,
+        },
+    )
+    .await;
+
+    assert!(!vector_only_hybrid.ok);
+    assert_eq!(
+        vector_only_hybrid.error.expect("error").code,
+        ErrorCode::InvalidArgument
+    );
+
+    let text_only_hybrid = services_v1::combined_search_v1(
+        &harness.state,
+        CombinedSearchRequestV1 {
+            table_id: harness.table_id.clone(),
+            vector: None,
+            vector_column: None,
+            query: Some("item 1".to_string()),
+            columns: Some(vec!["text".to_string()]),
+            limit: None,
+            offset: None,
+            projection: None,
+            filter: None,
+            nprobes: None,
+            refine_factor: None,
+        },
+    )
+    .await;
+
+    assert!(!text_only_hybrid.ok);
+    assert_eq!(
+        text_only_hybrid.error.expect("error").code,
         ErrorCode::InvalidArgument
     );
 
