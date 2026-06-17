@@ -182,6 +182,18 @@ Connection forms should keep the common path short:
 The app should use one coherent token ladder across Tailwind utility styling,
 Naive UI theme overrides, and custom component CSS.
 
+- The visual target is a Linear-style operational workbench: neutral graphite
+  surfaces, restrained borders, short radii, minimal shadows, dense typography,
+  and one low-saturation accent. Avoid glossy gradients, cyan-heavy controls,
+  oversized pills, and card stacks that make routine UI feel decorative.
+- Interactive controls should share one grammar:
+  - default: transparent or very soft fill with a 1px rule;
+  - hover: subtle surface lift or fill change, not saturated color;
+  - focus: visible accent ring;
+  - active/selected: soft accent wash plus crisp text, not glow;
+  - disabled: lower contrast while keeping shape stable.
+- Inputs and editable fields should read as precise workbench controls: stable
+  height, 1px border, quiet background, clear focus ring, and no heavy shadows.
 - Light and dark themes must both cover global app surface, primary navigation,
   connection sidebar, right workspace, dialogs, data tables, popovers, empty
   states, and status/toast surfaces.
@@ -195,6 +207,8 @@ Naive UI theme overrides, and custom component CSS.
 - Use accent color sparingly for route state, primary actions, selected table,
   active transport, and focused controls. Avoid turning every panel edge or icon
   into an accent.
+- Status colors are semantic, not decorative. Connected/dirty/warning/danger
+  states should be visible but secondary to the structure and labels.
 - Toasts/status messages are secondary feedback. They should not cover the page
   title, tabs, or first actionable controls, especially in narrow desktop
   windows.

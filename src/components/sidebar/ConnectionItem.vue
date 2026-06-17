@@ -37,15 +37,15 @@ const kindLabel = computed(() => getConnectionKindLabel(kind.value))
 const tagType = computed(() => getConnectionKindTagType(kind.value))
 const statusDotClass = computed(() => {
 	if (isConnecting.value) {
-		return "bg-amber-400 animate-pulse"
+		return "connection-status-dot--pending animate-pulse"
 	}
 	if (isDisconnecting.value) {
-		return "bg-amber-400 animate-pulse"
+		return "connection-status-dot--pending animate-pulse"
 	}
 	if (isConnected.value) {
-		return "bg-emerald-500"
+		return "connection-status-dot--connected"
 	}
-	return "bg-slate-300"
+	return "connection-status-dot--idle"
 })
 const statusText = computed(() => {
 	if (isConnecting.value) {
@@ -61,15 +61,15 @@ const statusText = computed(() => {
 })
 const statusTextClass = computed(() => {
 	if (isConnecting.value) {
-		return "text-amber-600"
+		return "connection-status-text--pending"
 	}
 	if (isDisconnecting.value) {
-		return "text-amber-600"
+		return "connection-status-text--pending"
 	}
 	if (isConnected.value) {
-		return "text-emerald-600"
+		return "connection-status-text--connected"
 	}
-	return "text-slate-500"
+	return "connection-status-text--idle"
 })
 const lastConnectedLabel = computed(() => formatTimestamp(props.profile.lastConnectedAt))
 const initials = computed(() => {
@@ -80,9 +80,9 @@ const initials = computed(() => {
 	return name.slice(0, 2).toUpperCase()
 })
 const avatarBgClass = computed(() => {
-	if (isConnecting.value || isDisconnecting.value) return "bg-amber-100 text-amber-700"
-	if (isConnected.value) return "bg-sky-100 text-sky-700"
-	return "bg-slate-100 text-slate-500"
+	if (isConnecting.value || isDisconnecting.value) return "connection-avatar--pending"
+	if (isConnected.value) return "connection-avatar--connected"
+	return "connection-avatar--idle"
 })
 const tableCount = computed(() => tables.value.length)
 const collapsedLabel = computed(() => {
@@ -131,17 +131,11 @@ function handleContextMenu(event: MouseEvent) {
 <template>
 	<NCard
 		size="small"
-		class="group transform-gpu will-change-transform transition-[transform,box-shadow,border-color,background-color,opacity] duration-200 ease-out focus-within:border-sky-200"
+		class="group connection-card transition-colors duration-150 ease-out"
 		:class="[
-			selected
-				? 'border-sky-200 shadow-[0_1px_2px_rgba(15,23,42,0.06),0_6px_18px_rgba(14,165,233,0.10)] hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_2px_6px_rgba(15,23,42,0.08),0_12px_26px_rgba(14,165,233,0.16)]'
-				: 'hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md',
-			collapsed
-				? selected
-					? 'bg-sky-50/40 hover:bg-sky-50/60'
-					: 'bg-slate-50/40 hover:bg-slate-50/70'
-				: '',
-			!isConnected && !isConnecting && !isDisconnecting ? 'opacity-70 hover:opacity-100' : '',
+			selected ? 'connection-card--selected' : '',
+			collapsed ? 'connection-card--collapsed' : '',
+			!isConnected && !isConnecting && !isDisconnecting ? 'connection-card--idle' : '',
 		]"
 		:content-style="collapsed ? { padding: '6px 4px' } : undefined"
 		@contextmenu="handleContextMenu"
@@ -149,56 +143,56 @@ function handleContextMenu(event: MouseEvent) {
 		<!-- V-2: Connected left indicator -->
 		<div
 			v-if="isConnected && !collapsed"
-			class="absolute left-0 top-0 h-full w-[3px] rounded-l-xl bg-sky-400 transition-opacity duration-200"
+			class="connection-state-bar connection-state-bar--connected"
 		/>
 		<div
 			v-else-if="(isConnecting || isDisconnecting) && !collapsed"
-			class="absolute left-0 top-0 h-full w-[3px] animate-pulse rounded-l-xl bg-amber-400 transition-opacity duration-200"
+			class="connection-state-bar connection-state-bar--pending animate-pulse"
 		/>
 		<!-- Collapsed left indicator (consistent with expanded) -->
 		<div
 			v-if="isConnected && collapsed"
-			class="absolute left-0 top-0 h-full w-[3px] rounded-l-xl bg-sky-400 transition-opacity duration-200"
+			class="connection-state-bar connection-state-bar--connected"
 		/>
 		<div
 			v-else-if="(isConnecting || isDisconnecting) && collapsed"
-			class="absolute left-0 top-0 h-full w-[3px] animate-pulse rounded-l-xl bg-amber-400 transition-opacity duration-200"
+			class="connection-state-bar connection-state-bar--pending animate-pulse"
 		/>
 		<div v-if="collapsed" class="flex flex-col items-center gap-0.5">
 			<NTooltip placement="right" :delay="300">
 				<template #trigger>
 					<button
-						class="group/btn flex w-full flex-col items-center gap-1 rounded-md px-1 py-1 text-center transition hover:bg-slate-100/70 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+						class="connection-collapsed-trigger group/btn flex w-full flex-col items-center gap-1 px-1 py-1 text-center transition focus:outline-none"
 						:aria-label="collapsedLabel"
 						:title="collapsedLabel"
 						@click="emit('select')"
 					>
 						<div class="relative">
 							<div
-								class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold transition-colors"
+								class="connection-avatar flex h-8 w-8 items-center justify-center text-xs font-bold transition-colors"
 								:class="avatarBgClass"
 							>
 								{{ initials }}
 							</div>
 							<span
-								class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white"
+								class="connection-collapsed-dot absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2"
 								:class="statusDotClass"
 							/>
 						</div>
-						<span class="max-w-full truncate text-[10px] font-medium text-slate-500">
+						<span class="max-w-full truncate text-[10px] font-medium text-[var(--app-muted)]">
 							{{ isConnected ? `${tableCount} 表` : kindLabel }}
 						</span>
 					</button>
 				</template>
 				<div class="space-y-1 text-xs">
 					<div class="font-semibold">{{ profile.name }}</div>
-					<div class="text-slate-400">{{ profile.uri }}</div>
+					<div class="text-[var(--app-muted)]">{{ profile.uri }}</div>
 					<div class="flex items-center gap-2">
 						<span :class="statusTextClass">{{ statusText }}</span>
-						<span class="text-slate-400">·</span>
-						<span class="text-slate-400">{{ kindLabel }}</span>
+						<span class="text-[var(--app-subtle)]">·</span>
+						<span class="text-[var(--app-muted)]">{{ kindLabel }}</span>
 					</div>
-					<div v-if="isConnected" class="text-slate-400">
+					<div v-if="isConnected" class="text-[var(--app-muted)]">
 						{{ tableCount }} 张表
 					</div>
 				</div>
@@ -208,20 +202,20 @@ function handleContextMenu(event: MouseEvent) {
 		<div v-else>
 			<div class="flex items-start justify-between gap-3">
 				<button
-					class="flex min-w-0 flex-1 rounded-md text-left focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+					class="connection-main-trigger flex min-w-0 flex-1 rounded-md text-left focus:outline-none"
 					@click="emit('select')"
 				>
 					<div class="min-w-0 flex-1">
 						<div class="flex items-center gap-2">
 							<span class="h-2 w-2 rounded-full" :class="statusDotClass" />
 							<div
-								class="truncate text-sm font-semibold text-slate-800"
+								class="truncate text-sm font-semibold text-[var(--app-ink-strong)]"
 								:title="profile.name"
 							>
 								{{ profile.name }}
 							</div>
 						</div>
-						<div class="truncate text-xs text-slate-500" :title="profile.uri">
+						<div class="truncate text-xs text-[var(--app-muted)]" :title="profile.uri">
 							{{ profile.uri }}
 						</div>
 					</div>
@@ -242,7 +236,7 @@ function handleContextMenu(event: MouseEvent) {
 				</div>
 			</div>
 
-			<div class="mt-1 text-[11px] text-slate-500">最近连接：{{ lastConnectedLabel }}</div>
+			<div class="mt-1 text-[11px] text-[var(--app-muted)]">最近连接：{{ lastConnectedLabel }}</div>
 
 			<!-- I-1: Inline action buttons -->
 			<div class="mt-2 flex items-center gap-2">
@@ -284,7 +278,7 @@ function handleContextMenu(event: MouseEvent) {
 			</div>
 
 			<div class="mt-3">
-				<div class="flex items-center justify-between text-xs text-slate-500">
+				<div class="flex items-center justify-between text-xs text-[var(--app-muted)]">
 					<NButton
 						size="tiny"
 						quaternary
@@ -301,10 +295,10 @@ function handleContextMenu(event: MouseEvent) {
 					</div>
 				</div>
 				<div
-					class="mt-2 overflow-hidden rounded-lg bg-slate-50/70 transition-[height] duration-200 ease-out"
+					class="connection-table-list mt-2 overflow-hidden transition-[height] duration-150 ease-out"
 					:style="{ height: `${tableListContainerHeight}px` }"
 				>
-					<div v-if="isConnected" class="border-l border-slate-200/80 pl-2">
+					<div v-if="isConnected" class="border-l border-[var(--app-rule)] pl-2">
 						<NVirtualList
 							:items="tables"
 							:item-size="32"
@@ -330,14 +324,30 @@ function handleContextMenu(event: MouseEvent) {
 </template>
 
 <style scoped>
-:deep(.n-card) {
+:deep(.connection-card.n-card) {
+	position: relative;
 	background: var(--app-surface-elevated);
 	border-color: var(--app-rule);
 	color: var(--app-ink);
+	box-shadow: none;
 }
 
-:deep(.n-card:hover) {
+:deep(.connection-card.n-card:hover) {
 	border-color: var(--app-rule-strong);
+	background: var(--app-control);
+}
+
+:deep(.connection-card.n-card.connection-card--selected) {
+	border-color: color-mix(in srgb, var(--app-accent) 34%, var(--app-rule));
+	background: var(--app-accent-soft);
+}
+
+:deep(.connection-card.n-card.connection-card--idle) {
+	background: color-mix(in srgb, var(--app-surface-elevated) 72%, var(--app-surface-panel));
+}
+
+:deep(.connection-card.n-card.connection-card--collapsed) {
+	text-align: center;
 }
 
 :deep(.n-card__content) {
@@ -346,5 +356,92 @@ function handleContextMenu(event: MouseEvent) {
 
 .group {
 	color: var(--app-ink);
+}
+
+.connection-state-bar {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 2px;
+	height: 100%;
+	border-radius: var(--app-radius-lg) 0 0 var(--app-radius-lg);
+	opacity: 0.85;
+}
+
+.connection-state-bar--connected {
+	background: var(--app-success);
+}
+
+.connection-state-bar--pending {
+	background: var(--app-warning);
+}
+
+.connection-collapsed-trigger,
+.connection-main-trigger {
+	border-radius: var(--app-radius-md);
+	color: var(--app-ink);
+}
+
+.connection-collapsed-trigger:hover,
+.connection-main-trigger:hover {
+	background: color-mix(in srgb, var(--app-control-hover) 72%, transparent);
+}
+
+.connection-collapsed-trigger:focus-visible,
+.connection-main-trigger:focus-visible {
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-focus) 28%, transparent);
+}
+
+.connection-avatar {
+	border: 1px solid var(--app-rule);
+	border-radius: var(--app-radius-md);
+}
+
+.connection-avatar--connected {
+	background: var(--app-accent-soft);
+	color: var(--app-accent-strong);
+}
+
+.connection-avatar--pending {
+	background: var(--app-warning-soft);
+	color: var(--app-warning);
+}
+
+.connection-avatar--idle {
+	background: var(--app-surface-panel-muted);
+	color: var(--app-muted);
+}
+
+.connection-collapsed-dot {
+	border-color: var(--app-surface-elevated);
+}
+
+.connection-status-dot--connected {
+	background: var(--app-success);
+}
+
+.connection-status-dot--pending {
+	background: var(--app-warning);
+}
+
+.connection-status-dot--idle {
+	background: var(--app-subtle);
+}
+
+.connection-status-text--connected {
+	color: var(--app-success);
+}
+
+.connection-status-text--pending {
+	color: var(--app-warning);
+}
+
+.connection-status-text--idle {
+	color: var(--app-muted);
+}
+
+.connection-table-list {
+	border-radius: var(--app-radius-md);
+	background: color-mix(in srgb, var(--app-surface-panel-muted) 58%, transparent);
 }
 </style>

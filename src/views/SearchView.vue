@@ -596,7 +596,7 @@ async function runCombinedQuery() {
 
 		<div v-else class="space-y-4">
 			<div
-				class="flex items-center justify-between rounded-lg border border-[var(--app-rule)] bg-[var(--app-surface-elevated)] px-4 py-2 text-sm shadow-[var(--app-shadow-whisper)]"
+				class="flex items-center justify-between rounded-md border border-[var(--app-rule)] bg-[var(--app-surface-elevated)] px-4 py-2 text-sm"
 			>
 				<div class="flex items-center gap-2 text-[var(--app-muted)]">
 					<span>当前表：</span>
@@ -888,7 +888,7 @@ async function runCombinedQuery() {
 
 .app-empty-state-icon--warning {
 	background: var(--app-warning-soft);
-	color: #f59e0b;
+	color: var(--app-warning);
 }
 
 .app-empty-state-icon--info {
@@ -910,7 +910,7 @@ async function runCombinedQuery() {
 
 .search-results-card {
 	background: var(--app-surface-elevated);
-	box-shadow: var(--app-shadow-whisper);
+	box-shadow: none;
 }
 
 :deep(label),

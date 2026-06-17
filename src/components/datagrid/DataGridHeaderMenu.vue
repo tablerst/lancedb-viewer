@@ -247,7 +247,7 @@ function getPresets(): Array<{ label: string; value: string }> {
 	background: var(--app-surface-elevated);
 	border: 1px solid var(--app-rule);
 	border-radius: 8px;
-	box-shadow: var(--app-shadow-raised);
+	box-shadow: var(--app-shadow-whisper);
 	padding: 4px 0;
 	font-size: 13px;
 	z-index: 1001;
@@ -287,7 +287,7 @@ function getPresets(): Array<{ label: string; value: string }> {
 }
 
 .header-menu-item--danger {
-	color: #dc2626;
+	color: var(--app-danger);
 }
 
 .header-menu-item--danger:hover {
@@ -338,7 +338,7 @@ function getPresets(): Array<{ label: string; value: string }> {
 
 .header-menu-input:focus {
 	border-color: var(--app-accent);
-	box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.15);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-focus) 20%, transparent);
 }
 
 .header-menu-apply {

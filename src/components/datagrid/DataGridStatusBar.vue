@@ -112,7 +112,7 @@ function nextPage(page: number, pageCount: number) {
 }
 
 .datagrid-statusbar-dirty {
-	color: #d97706;
+	color: var(--app-warning);
 	font-weight: 600;
 }
 

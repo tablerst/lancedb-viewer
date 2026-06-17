@@ -300,7 +300,7 @@ function formatInspectableValue(value: unknown): string {
 }
 
 .datagrid-cell-input:focus {
-	box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-focus) 22%, transparent);
 }
 
 .datagrid-cell-detail {
@@ -361,11 +361,11 @@ function formatInspectableValue(value: unknown): string {
 
 .datagrid-bool--true {
 	background: var(--app-success-soft);
-	color: #0f766e;
+	color: var(--app-success);
 }
 
 .datagrid-bool--false {
 	background: var(--app-danger-soft);
-	color: #dc2626;
+	color: var(--app-danger);
 }
 </style>

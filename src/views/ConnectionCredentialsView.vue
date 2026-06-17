@@ -429,7 +429,7 @@ onMounted(() => {
 <style scoped>
 .credentials-card {
 	background: var(--app-surface-elevated);
-	box-shadow: var(--app-shadow-whisper);
+	box-shadow: none;
 }
 
 .credential-panel,

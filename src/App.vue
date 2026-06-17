@@ -187,7 +187,7 @@ watch(
 									{{ errorMessage }}
 								</NAlert>
 							</div>
-							<div class="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+							<div class="min-h-0 flex-1 overflow-y-auto p-3 md:p-4">
 								<div :class="isFullWidthRoute ? 'w-full h-full' : 'mx-auto w-full max-w-[1600px]'">
 									<RouterView />
 								</div>

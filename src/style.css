@@ -1,64 +1,73 @@
+/* Hallmark · genre: modern-minimal · macrostructure: Workbench · design-system: UI_DESIGN.md · designed-as-app */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
 	color-scheme: light;
-	--app-surface: #f6f8fb;
-	--app-surface-panel: #fbfdff;
+	--app-surface: #f7f7f4;
+	--app-surface-panel: #f1f1ee;
 	--app-surface-elevated: #ffffff;
-	--app-surface-panel-muted: #f1f5f9;
-	--app-surface-soft: #eef6ff;
-	--app-rule: #dbe3ee;
-	--app-rule-strong: #cbd5e1;
-	--app-ink: #0f172a;
-	--app-ink-strong: #020617;
-	--app-muted: #64748b;
-	--app-subtle: #94a3b8;
-	--app-accent: #0284c7;
-	--app-accent-strong: #0ea5e9;
-	--app-accent-soft: #e0f2fe;
-	--app-success-soft: #ecfdf5;
-	--app-warning-soft: #fffbeb;
-	--app-danger-soft: #fef2f2;
+	--app-surface-panel-muted: #ececea;
+	--app-surface-soft: #f3f4ff;
+	--app-rule: #dfdfda;
+	--app-rule-strong: #c9c9c2;
+	--app-ink: #202124;
+	--app-ink-strong: #0f1012;
+	--app-muted: #6f7178;
+	--app-subtle: #a0a1a7;
+	--app-accent: #5e6ad2;
+	--app-accent-strong: #4f5bd5;
+	--app-accent-soft: #eff0ff;
+	--app-success: #24855d;
+	--app-warning: #9a6700;
+	--app-danger: #c52828;
+	--app-success-soft: #edf8f1;
+	--app-warning-soft: #fbf4df;
+	--app-danger-soft: #fbefef;
 	--app-control: #ffffff;
-	--app-control-hover: #f1f5f9;
-	--app-nav: #0b1220;
-	--app-nav-muted: #94a3b8;
-	--app-focus: #0ea5e9;
-	--app-radius-sm: 6px;
-	--app-radius-md: 8px;
-	--app-radius-lg: 10px;
-	--app-shadow-whisper: 0 1px 2px rgb(15 23 42 / 0.05);
-	--app-shadow-raised: 0 10px 30px rgb(15 23 42 / 0.08);
+	--app-control-hover: #ececea;
+	--app-control-pressed: #e4e4df;
+	--app-nav: #111214;
+	--app-nav-muted: #9b9da6;
+	--app-focus: #5e6ad2;
+	--app-radius-sm: 4px;
+	--app-radius-md: 6px;
+	--app-radius-lg: 8px;
+	--app-shadow-whisper: 0 1px 1px rgb(15 16 18 / 0.04);
+	--app-shadow-raised: 0 10px 24px rgb(15 16 18 / 0.08);
 	--app-mono-font: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
 }
 
 html.dark {
 	color-scheme: dark;
-	--app-surface: #111827;
-	--app-surface-panel: #172033;
-	--app-surface-elevated: #1f2937;
-	--app-surface-panel-muted: #111827;
-	--app-surface-soft: #0f2738;
-	--app-rule: #334155;
-	--app-rule-strong: #475569;
-	--app-ink: #e5edf8;
-	--app-ink-strong: #f8fafc;
-	--app-muted: #a7b4c8;
-	--app-subtle: #7c8ca5;
-	--app-accent: #38bdf8;
-	--app-accent-strong: #7dd3fc;
-	--app-accent-soft: rgb(14 165 233 / 0.18);
-	--app-success-soft: rgb(20 184 166 / 0.14);
-	--app-warning-soft: rgb(245 158 11 / 0.14);
-	--app-danger-soft: rgb(239 68 68 / 0.14);
-	--app-control: #243246;
-	--app-control-hover: #2f4057;
-	--app-nav: #070c16;
-	--app-nav-muted: #8da1bc;
-	--app-shadow-whisper: 0 1px 2px rgb(0 0 0 / 0.22);
-	--app-shadow-raised: 0 16px 34px rgb(0 0 0 / 0.28);
+	--app-surface: #0f1012;
+	--app-surface-panel: #151619;
+	--app-surface-elevated: #1b1c20;
+	--app-surface-panel-muted: #202127;
+	--app-surface-soft: rgb(116 126 255 / 0.12);
+	--app-rule: #2d2f36;
+	--app-rule-strong: #42454f;
+	--app-ink: #e7e7ea;
+	--app-ink-strong: #ffffff;
+	--app-muted: #a4a6ad;
+	--app-subtle: #757883;
+	--app-accent: #8f96ff;
+	--app-accent-strong: #aeb3ff;
+	--app-accent-soft: rgb(143 150 255 / 0.14);
+	--app-success: #61c083;
+	--app-warning: #d4a245;
+	--app-danger: #ff6b6b;
+	--app-success-soft: rgb(97 192 131 / 0.12);
+	--app-warning-soft: rgb(212 162 69 / 0.12);
+	--app-danger-soft: rgb(255 107 107 / 0.12);
+	--app-control: #1b1c20;
+	--app-control-hover: #24262c;
+	--app-control-pressed: #2b2d34;
+	--app-nav: #0b0c0e;
+	--app-nav-muted: #8c8f99;
+	--app-shadow-whisper: 0 1px 1px rgb(0 0 0 / 0.3);
+	--app-shadow-raised: 0 14px 30px rgb(0 0 0 / 0.26);
 }
 
 html,
@@ -71,6 +80,7 @@ body {
 	@apply text-slate-900 antialiased;
 	background: var(--app-surface);
 	color: var(--app-ink);
+	font-family: "Inter", "Noto Sans SC", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 button,
@@ -78,6 +88,44 @@ input,
 textarea,
 select {
 	font: inherit;
+}
+
+.n-card {
+	box-shadow: none;
+}
+
+.n-button {
+	font-weight: 500;
+	box-shadow: none;
+	transition:
+		background-color 120ms ease,
+		border-color 120ms ease,
+		color 120ms ease,
+		opacity 120ms ease;
+}
+
+.n-button:not(.n-button--disabled):focus-visible {
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-focus) 26%, transparent);
+}
+
+.n-input,
+.n-base-selection,
+.n-input-number {
+	box-shadow: none;
+}
+
+.n-input:not(.n-input--disabled):hover,
+.n-base-selection:not(.n-base-selection--disabled):hover {
+	border-color: var(--app-rule-strong);
+}
+
+.n-input.n-input--focus,
+.n-base-selection.n-base-selection--active {
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-focus) 22%, transparent);
+}
+
+.n-tag {
+	font-weight: 500;
 }
 
 .app-workspace-empty {
@@ -91,7 +139,7 @@ select {
 }
 
 .app-workspace-empty .n-empty__icon {
-	color: #94a3b8;
+	color: var(--app-subtle);
 }
 
 .app-workspace-empty .n-empty__description {
@@ -151,6 +199,74 @@ html.dark .text-sky-600,
 html.dark .text-sky-500,
 html.dark .text-sky-400 {
 	color: var(--app-accent-strong);
+}
+
+.text-slate-950,
+.text-slate-900,
+.text-slate-800,
+.text-slate-700,
+.text-slate-600 {
+	color: var(--app-ink);
+}
+
+.text-slate-500,
+.text-slate-400,
+.text-slate-300 {
+	color: var(--app-muted);
+}
+
+.text-sky-600,
+.text-sky-500,
+.text-sky-400 {
+	color: var(--app-accent-strong);
+}
+
+.text-amber-600,
+.text-amber-500 {
+	color: var(--app-warning);
+}
+
+.text-rose-600 {
+	color: var(--app-danger);
+}
+
+.bg-slate-50,
+.bg-slate-50\/40,
+.bg-slate-50\/60,
+.bg-slate-50\/70,
+.bg-slate-50\/80,
+.bg-slate-100 {
+	background-color: var(--app-surface-panel-muted);
+}
+
+.bg-sky-50,
+.bg-sky-50\/40,
+.bg-sky-50\/60,
+.bg-sky-100 {
+	background-color: var(--app-accent-soft);
+}
+
+.bg-amber-50,
+.bg-amber-100 {
+	background-color: var(--app-warning-soft);
+}
+
+.border-slate-100,
+.border-slate-200,
+.border-slate-200\/80,
+.border-slate-300 {
+	border-color: var(--app-rule);
+}
+
+.hover\:bg-slate-50:hover,
+.hover\:bg-slate-100\/70:hover,
+.hover\:bg-slate-50\/70:hover {
+	background-color: var(--app-control-hover);
+}
+
+.shadow-sm,
+.shadow-md {
+	box-shadow: none;
 }
 
 html.dark .hover\:bg-slate-50:hover,

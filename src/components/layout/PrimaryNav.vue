@@ -146,7 +146,7 @@ function navigate(to: string) {
 	height: 100%;
 	flex-shrink: 0;
 	flex-direction: column;
-	border-right: 1px solid rgb(148 163 184 / 0.18);
+	border-right: 1px solid rgb(255 255 255 / 0.08);
 	background: var(--app-nav);
 	color: var(--app-nav-muted);
 }
@@ -157,10 +157,10 @@ function navigate(to: string) {
 	height: 32px;
 	align-items: center;
 	justify-content: center;
-	border-radius: 8px;
-	background: linear-gradient(135deg, #0ea5e9, #14b8a6);
-	color: white;
-	box-shadow: 0 8px 18px rgb(14 165 233 / 0.25);
+	border: 1px solid rgb(255 255 255 / 0.08);
+	border-radius: 7px;
+	background: rgb(255 255 255 / 0.035);
+	color: var(--app-accent-strong);
 }
 
 .primary-nav-button {
@@ -171,17 +171,18 @@ function navigate(to: string) {
 	align-items: center;
 	justify-content: center;
 	gap: 3px;
-	border-radius: 8px;
+	border: 1px solid transparent;
+	border-radius: 7px;
 	padding: 6px 2px;
 	color: var(--app-nav-muted);
 	font-size: 11px;
 	font-weight: 500;
 	line-height: 1.05;
-	transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+	transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .primary-nav-button:hover {
-	background: rgb(255 255 255 / 0.08);
+	background: rgb(255 255 255 / 0.055);
 	color: white;
 }
 
@@ -191,9 +192,9 @@ function navigate(to: string) {
 }
 
 .primary-nav-button--active {
-	background: rgb(14 165 233 / 0.18);
-	color: #e0f7ff;
-	box-shadow: inset 3px 0 0 #38bdf8;
+	border-color: rgb(255 255 255 / 0.08);
+	background: rgb(255 255 255 / 0.075);
+	color: white;
 }
 
 .primary-nav-button span {

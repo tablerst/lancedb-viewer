@@ -349,11 +349,11 @@ function hasColumnFilter(columnKey: string): boolean {
 								<span class="datagrid-header-indicators">
 									<Filter
 										v-if="hasColumnFilter(col.key)"
-										class="h-3 w-3 text-sky-500"
+										class="h-3 w-3 text-[var(--app-accent-strong)]"
 									/>
 									<template v-if="sort?.column === col.key">
-										<ArrowUp v-if="sort.order === 'asc'" class="h-3 w-3 text-sky-500" />
-										<ArrowDown v-else class="h-3 w-3 text-sky-500" />
+										<ArrowUp v-if="sort.order === 'asc'" class="h-3 w-3 text-[var(--app-accent-strong)]" />
+										<ArrowDown v-else class="h-3 w-3 text-[var(--app-accent-strong)]" />
 									</template>
 								</span>
 								<button
@@ -454,7 +454,7 @@ function hasColumnFilter(columnKey: string): boolean {
 	background: var(--app-surface-elevated);
 	color: var(--app-ink);
 	outline: none;
-	box-shadow: var(--app-shadow-whisper);
+	box-shadow: none;
 }
 
 .datagrid-table-wrapper {
@@ -472,14 +472,14 @@ function hasColumnFilter(columnKey: string): boolean {
 
 /* Header */
 .datagrid-header-row {
-	background: var(--app-surface-panel-muted);
+	background: var(--app-surface-panel);
 }
 
 .datagrid-header-cell {
-	padding: 8px 12px;
+	padding: 7px 10px;
 	border-bottom: 1px solid var(--app-rule);
 	font-weight: 600;
-	color: var(--app-ink);
+	color: var(--app-muted);
 	text-align: left;
 	white-space: nowrap;
 	user-select: none;
@@ -494,6 +494,7 @@ function hasColumnFilter(columnKey: string): boolean {
 }
 
 .datagrid-header-cell--filtered {
+	color: var(--app-accent-strong);
 	background: var(--app-accent-soft);
 }
 
@@ -563,7 +564,7 @@ function hasColumnFilter(columnKey: string): boolean {
 }
 
 .datagrid-body-row:hover {
-	background: var(--app-surface-panel-muted);
+	background: color-mix(in srgb, var(--app-control-hover) 70%, transparent);
 }
 
 .datagrid-row--dirty {

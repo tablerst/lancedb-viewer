@@ -29,3 +29,4 @@ dev-docs
 target/rust-analyzer/flycheck0/
 tmp-ui-ldbrev12-16/
 tmp-ui-audit/
+tmp-ui-linear-audit/

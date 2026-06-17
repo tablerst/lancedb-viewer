@@ -234,8 +234,8 @@ async function saveProfile() {
 </script>
 
 <template>
-	<div class="h-screen w-screen bg-[var(--app-surface)] p-4 text-[var(--app-ink)]">
-		<NCard title="编辑连接" size="small" class="connection-dialog-card">
+	<div class="connection-dialog-shell">
+		<NCard title="编辑连接" size="small" class="connection-dialog-card" :bordered="false">
 			<div class="space-y-3">
 				<NAlert v-if="errorMessage" type="error" :bordered="false">
 					{{ errorMessage }}
@@ -260,7 +260,7 @@ async function saveProfile() {
 							<NButton
 								v-if="showLocalPicker"
 								size="small"
-								quaternary
+								secondary
 								@click="pickLocalFolder"
 							>
 								<FolderOpen class="h-4 w-4" />
@@ -274,7 +274,7 @@ async function saveProfile() {
 
 					<NButton
 						size="small"
-						quaternary
+						secondary
 						@click="showAdvancedOptions = !showAdvancedOptions"
 					>
 						{{ showAdvancedOptions ? "收起高级连接选项" : "展开高级连接选项" }}
@@ -325,7 +325,7 @@ async function saveProfile() {
 									保持 params 为空将沿用当前引用。
 								</p>
 							</div>
-							<p v-if="!authForm.saveToStronghold" class="text-xs text-amber-500">
+							<p v-if="!authForm.saveToStronghold" class="text-xs text-[var(--app-warning)]">
 								关闭 Stronghold 将明文写入连接档案。
 							</p>
 						</div>
@@ -351,9 +351,30 @@ async function saveProfile() {
 </template>
 
 <style scoped>
+.connection-dialog-shell {
+	width: 100vw;
+	height: 100vh;
+	overflow: auto;
+	background: var(--app-surface-panel);
+	padding: 14px;
+	color: var(--app-ink);
+}
+
 .connection-dialog-card {
+	max-width: 520px;
+	margin: 0 auto;
+	border: 1px solid var(--app-rule);
 	background: var(--app-surface-elevated);
-	box-shadow: var(--app-shadow-raised);
+	box-shadow: none;
+}
+
+.connection-dialog-card :deep(.n-card-header) {
+	border-bottom: 1px solid var(--app-rule);
+	padding: 14px 16px 10px;
+}
+
+.connection-dialog-card :deep(.n-card__content) {
+	padding: 14px 16px 16px;
 }
 
 .connection-label {
@@ -378,8 +399,8 @@ async function saveProfile() {
 	flex-direction: column;
 	gap: 12px;
 	border: 1px solid var(--app-rule);
-	border-radius: 8px;
-	background: var(--app-surface-panel-muted);
+	border-radius: var(--app-radius-md);
+	background: var(--app-surface-panel);
 	padding: 12px;
 }
 </style>

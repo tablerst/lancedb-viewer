@@ -333,9 +333,10 @@ const contextMenuOptions = computed<DropdownMixedOption[]>(() => {
 		{ type: "divider", key: "d-danger" },
 		{
 			key: "delete",
-			label: () => h("span", { class: "font-medium text-rose-600" }, "删除连接…"),
+			label: () =>
+				h("span", { style: { color: "var(--app-danger)", fontWeight: 500 } }, "删除连接…"),
 			icon: () => h(Trash2, { class: "h-4 w-4" }),
-			props: { class: "text-rose-600" },
+			props: { style: { color: "var(--app-danger)" } },
 		},
 	]
 })
@@ -426,7 +427,7 @@ async function handleContextMenuSelect(key: string | number) {
 				circle
 				:aria-label="isCollapsed ? '展开侧边栏' : '收起侧边栏'"
 				:title="isCollapsed ? '展开侧边栏' : '收起侧边栏'"
-				class="border border-[var(--app-rule)] bg-[var(--app-surface-panel)] shadow-[var(--app-shadow-whisper)] hover:bg-slate-50"
+				class="sidebar-collapse-button"
 				@click="toggleCollapse"
 			>
 				<ChevronRight v-if="isCollapsed" class="h-4 w-4" />
@@ -441,24 +442,24 @@ async function handleContextMenuSelect(key: string | number) {
 			>
 				<div v-if="!isCollapsed" class="min-w-0 space-y-1">
 					<div class="flex items-center gap-2">
-						<div class="text-sm font-semibold leading-tight text-slate-950">连接</div>
-						<span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+						<div class="text-sm font-semibold leading-tight text-[var(--app-ink-strong)]">连接</div>
+						<span class="sidebar-count-badge">
 							{{ connectionCountLabel }}
 						</span>
 					</div>
-					<div class="text-xs leading-snug text-slate-500">连接、凭证与表上下文</div>
+					<div class="text-xs leading-snug text-[var(--app-muted)]">连接、凭证与表上下文</div>
 				</div>
 
 				<div class="flex gap-2" :class="isCollapsed ? 'flex-col items-center' : 'items-center pt-0.5'">
 					<NPopover trigger="click" placement="bottom-start">
 						<template #trigger>
-							<NButton size="small" secondary>
+							<NButton size="small" secondary class="sidebar-header-button">
 								<Filter class="h-4 w-4" />
 								<span v-if="!isCollapsed" class="ml-2">筛选</span>
 							</NButton>
 						</template>
 						<div class="w-56 space-y-2 p-2">
-							<div class="text-xs font-medium text-slate-700">连接类型</div>
+							<div class="text-xs font-medium text-[var(--app-muted)]">连接类型</div>
 							<NRadioGroup v-model:value="filterKind" size="small">
 								<div class="filter-radio-grid grid grid-cols-2 gap-2 p-0.5">
 									<NRadioButton value="all">全部</NRadioButton>
@@ -472,7 +473,7 @@ async function handleContextMenuSelect(key: string | number) {
 						</div>
 					</NPopover>
 
-					<NButton size="small" type="primary" @click.stop="openCreateDialog">
+					<NButton size="small" type="primary" class="sidebar-header-button" @click.stop="openCreateDialog">
 						<Plus class="h-4 w-4" />
 						<span v-if="!isCollapsed" class="ml-2">新建</span>
 					</NButton>
@@ -531,12 +532,42 @@ async function handleContextMenuSelect(key: string | number) {
 </template>
 
 <style scoped>
+.sidebar-collapse-button {
+	border: 1px solid var(--app-rule);
+	background: var(--app-surface-elevated);
+	color: var(--app-muted);
+	box-shadow: none;
+}
+
+.sidebar-collapse-button:hover {
+	border-color: var(--app-rule-strong);
+	background: var(--app-control-hover);
+	color: var(--app-ink);
+}
+
+.sidebar-count-badge {
+	display: inline-flex;
+	align-items: center;
+	min-height: 18px;
+	border: 1px solid var(--app-rule);
+	border-radius: 5px;
+	background: var(--app-surface-elevated);
+	padding: 0 6px;
+	color: var(--app-muted);
+	font-size: 10px;
+	font-weight: 500;
+}
+
+.sidebar-header-button {
+	min-width: 32px;
+}
+
 .filter-radio-grid {
 	overflow: visible;
 }
 
 .filter-radio-grid :deep(.n-radio-button) {
-	border-radius: 8px;
+	border-radius: 6px;
 }
 
 .filter-radio-grid :deep(.n-radio-button:not(:first-child)) {
