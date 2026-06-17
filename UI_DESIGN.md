@@ -127,6 +127,23 @@ Search table context:
 - Search result tables should preserve score metadata columns when available,
   but missing score columns stay empty rather than becoming warnings.
 
+Search query builders:
+
+- A search mode panel is a compact query builder, not a long settings form.
+  Primary query inputs should appear first and share a row on desktop when
+  space allows.
+- Mode-specific required fields should be visually grouped before optional
+  execution controls such as limit, offset, nprobes, refine factor, and
+  projection.
+- Do not stack every editable field at full workspace width. Use responsive
+  grids, fixed command columns, and concise labels so users can scan the query
+  shape without scrolling.
+- Inputs are only for values the user can edit. Search context, score metadata,
+  selected table state, and backend response metadata should render as text,
+  badges, table columns, or definition rows.
+- Placeholder text is not a label. Every editable field needs a persistent
+  label; placeholders should show example syntax only.
+
 ## Management Tabs
 
 Schema, Versions, and Indexes should let users understand table state without
@@ -141,6 +158,13 @@ Versions:
 
 - Show version number, timestamp, and structured metadata entries.
 - Avoid raw comma-joined metadata strings.
+- Metadata entries are read-only facts. They must not be styled as disabled
+  inputs or editable text fields. Use compact key/value chips, definition rows,
+  or a table-like grid.
+- Version checkout and clone/branch commands should live in a narrow command
+  panel or compact action group beside the timeline on desktop. They should not
+  become full-width form cards below the version list unless the viewport is
+  too narrow.
 
 Indexes:
 
@@ -156,6 +180,11 @@ Indexes:
   - PQ/RQ sub-vectors and bits
   - HNSW edges and EF construction
 - Do not expose every LanceDB low-level knob until the UI has a clear need.
+- The index list is the primary surface. Create/delete controls are secondary
+  commands and should be adjacent to, not visually louder than, the list.
+- Advanced vector, PQ/RQ, and HNSW parameters should be grouped as optional
+  tuning controls. Do not present every parameter as a same-weight full-width
+  input row.
 
 ## Auth UX
 
@@ -194,6 +223,14 @@ Naive UI theme overrides, and custom component CSS.
   - disabled: lower contrast while keeping shape stable.
 - Inputs and editable fields should read as precise workbench controls: stable
   height, 1px border, quiet background, clear focus ring, and no heavy shadows.
+- Do not use an input, select, or disabled input as a display widget. Read-only
+  metadata, current table labels, version metadata, status, and computed counts
+  should render as plain text, badges, chips, tables, or definition rows.
+- Forms should have a clear command shape: label, editable controls, then one
+  grouped action row. Avoid uncontrolled vertical stacks of full-width fields.
+- Prefer split workbench layouts for management surfaces: primary list/timeline
+  on the left and a compact command panel on the right at desktop widths,
+  collapsing to one column only on narrow windows.
 - Light and dark themes must both cover global app surface, primary navigation,
   connection sidebar, right workspace, dialogs, data tables, popovers, empty
   states, and status/toast surfaces.

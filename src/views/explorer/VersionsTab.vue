@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { GitBranch, History, RefreshCw, RotateCcw } from "lucide-vue-next"
 import { computed, inject, ref, watch } from "vue"
 import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
@@ -187,68 +188,98 @@ watch(
 </script>
 
 <template>
-	<div class="space-y-4">
-		<NCard size="small" title="版本列表" class="shadow-sm">
-			<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-				<span>当前版本：{{ currentVersion ?? "—" }}</span>
-				<div class="flex items-center gap-2">
+	<div class="versions-workbench">
+		<section class="versions-main-panel">
+			<header class="versions-header">
+				<div>
+					<h2 class="versions-title">版本</h2>
+					<p class="versions-subtitle">
+						当前版本
+						<span class="current-version">{{ currentVersion ?? "—" }}</span>
+					</p>
+				</div>
+				<div class="versions-actions">
 					<NButton
 						secondary
+						size="small"
 						:loading="isLoadingVersions"
 						:disabled="!hasActiveTable"
 						@click="loadVersions"
 					>
-						刷新版本
+						<template #icon>
+							<RefreshCw class="h-4 w-4" />
+						</template>
+						刷新列表
 					</NButton>
 					<NButton
 						quaternary
+						size="small"
 						:disabled="!hasActiveTable"
 						@click="loadCurrentVersion"
 					>
-						刷新当前版本
+						当前版本
 					</NButton>
 				</div>
-			</div>
-			<NAlert v-if="versionError" type="error" :bordered="false" class="mt-3">
+			</header>
+
+			<NAlert v-if="versionError" type="error" :bordered="false" class="versions-alert">
 				{{ versionError }}
 			</NAlert>
-			<div v-if="isLoadingVersions && !versions.length" class="space-y-2 py-4">
+
+			<div v-if="isLoadingVersions && !versions.length" class="versions-skeleton">
 				<NSkeleton text :repeat="4" class="w-full" />
 			</div>
-			<NTimeline
-				v-else-if="timelineItems.length"
-				class="mt-4 max-h-[320px] overflow-y-auto pl-1 pr-2"
-			>
-				<NTimelineItem
+			<div v-else-if="timelineItems.length" class="versions-timeline">
+				<article
 					v-for="item in timelineItems"
 					:key="item.version"
-					:type="item.type"
-					:title="item.title"
-					:time="item.time"
-					:line-type="item.isCurrent ? 'dashed' : 'default'"
+					class="version-row"
+					:class="{ 'version-row--current': item.isCurrent }"
 				>
-					<div v-if="item.metadataEntries.length" class="version-metadata-grid">
-						<div
-							v-for="entry in item.metadataEntries"
-							:key="`${item.version}-${entry.key}`"
-							class="version-metadata-entry"
-						>
-							<span class="version-metadata-key">{{ entry.key }}</span>
-							<span class="version-metadata-value">{{ entry.value }}</span>
+					<div class="version-marker" aria-hidden="true" />
+					<div class="version-body">
+						<div class="version-row-header">
+							<div class="version-id">
+								<span>v{{ item.version }}</span>
+								<NTag
+									v-if="item.isCurrent"
+									size="small"
+									type="success"
+									:bordered="false"
+								>
+									当前
+								</NTag>
+							</div>
+							<time class="version-time">{{ item.time }}</time>
 						</div>
+						<div v-if="item.metadataEntries.length" class="version-metadata-grid">
+							<div
+								v-for="entry in item.metadataEntries"
+								:key="`${item.version}-${entry.key}`"
+								class="version-metadata-entry"
+							>
+								<span class="version-metadata-key">{{ entry.key }}</span>
+								<span class="version-metadata-value">{{ entry.value }}</span>
+							</div>
+						</div>
+						<div v-else class="version-empty-metadata">无 metadata</div>
 					</div>
-					<div v-else class="text-xs text-slate-400">无 metadata</div>
-				</NTimelineItem>
-			</NTimeline>
-			<NEmpty v-else description="暂无版本记录" class="mt-3" />
-		</NCard>
+				</article>
+			</div>
+			<NEmpty v-else description="暂无版本记录" class="versions-empty" />
+		</section>
 
-		<NCard size="small" title="打开版本" class="shadow-sm">
-			<div class="grid gap-3 xl:grid-cols-6">
-				<div class="xl:col-span-2">
-					<label for="checkout-version-input" class="text-sm font-medium text-slate-600">
-						版本号
-					</label>
+		<aside class="versions-command-panel">
+			<section class="version-command-section">
+				<div class="version-command-heading">
+					<div>
+						<h3 class="version-command-title">打开版本</h3>
+						<p class="version-command-subtitle">切换当前表到指定历史版本</p>
+					</div>
+					<History class="version-command-icon" />
+				</div>
+				<label class="version-field" for="checkout-version-input">
+					<span>版本号</span>
 					<NInputNumber
 						v-model:value="checkoutVersion"
 						:min="0"
@@ -259,8 +290,8 @@ watch(
 						}"
 						:disabled="!hasActiveTable"
 					/>
-				</div>
-				<div class="xl:col-span-4 flex items-end justify-end gap-2">
+				</label>
+				<div class="version-command-actions">
 					<NButton
 						type="primary"
 						:loading="isCheckingOutVersion"
@@ -275,47 +306,53 @@ watch(
 						:disabled="!hasActiveTable"
 						@click="submitCheckoutLatest"
 					>
+						<template #icon>
+							<RotateCcw class="h-4 w-4" />
+						</template>
 						回到最新
 					</NButton>
 				</div>
-			</div>
-		</NCard>
+			</section>
 
-		<NCard size="small" title="克隆/分支" class="shadow-sm">
-			<div class="grid gap-3 xl:grid-cols-6">
-				<div class="xl:col-span-3">
-					<label class="text-sm font-medium text-slate-600">新表名</label>
-					<NInput
-						v-model:value="cloneTargetName"
-						placeholder="clone_table"
-						:disabled="!hasActiveTable"
-					/>
+			<section class="version-command-section">
+				<div class="version-command-heading">
+					<div>
+						<h3 class="version-command-title">克隆/分支</h3>
+						<p class="version-command-subtitle">从当前表或指定版本派生新表</p>
+					</div>
+					<GitBranch class="version-command-icon" />
 				</div>
-				<div class="xl:col-span-2">
-					<label for="clone-source-version-input" class="text-sm font-medium text-slate-600">
-						源版本（可选）
+				<div class="version-field-grid">
+					<label class="version-field">
+						<span>新表名</span>
+						<NInput
+							v-model:value="cloneTargetName"
+							placeholder="clone_table"
+							:disabled="!hasActiveTable"
+						/>
 					</label>
-					<NInputNumber
-						v-model:value="cloneSourceVersion"
-						:min="0"
-						placeholder="留空使用最新"
-						:show-button="false"
-						:input-props="{
-							id: 'clone-source-version-input',
-							'aria-label': '克隆源版本',
-						}"
-						:disabled="!hasActiveTable"
-					/>
+					<label class="version-field" for="clone-source-version-input">
+						<span>源版本</span>
+						<NInputNumber
+							v-model:value="cloneSourceVersion"
+							:min="0"
+							placeholder="留空使用最新"
+							:show-button="false"
+							:input-props="{
+								id: 'clone-source-version-input',
+								'aria-label': '克隆源版本',
+							}"
+							:disabled="!hasActiveTable"
+						/>
+					</label>
 				</div>
-				<div class="xl:col-span-1 flex items-end">
-					<NCheckbox
-						v-model:checked="cloneIsShallow"
-						:disabled="!hasActiveTable"
-					>
+				<div class="clone-mode-row">
+					<NCheckbox v-model:checked="cloneIsShallow" :disabled="!hasActiveTable">
 						浅克隆
 					</NCheckbox>
+					<span>共享数据文件，适合分支试验；深克隆暂未实现。</span>
 				</div>
-				<div class="xl:col-span-6 flex items-center justify-end">
+				<div class="version-command-actions version-command-actions--end">
 					<NButton
 						type="primary"
 						:loading="isCloningTable"
@@ -325,20 +362,172 @@ watch(
 						创建克隆
 					</NButton>
 				</div>
-			</div>
-			<div class="mt-2 text-xs text-slate-400">
-				浅克隆共享数据文件，适合做分支试验；深克隆暂未实现。
-			</div>
-		</NCard>
+			</section>
+		</aside>
 	</div>
 </template>
 
 <style scoped>
+.versions-workbench {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+	gap: 16px;
+	align-items: start;
+}
+
+.versions-main-panel,
+.versions-command-panel {
+	min-width: 0;
+}
+
+.versions-main-panel,
+.version-command-section {
+	border: 1px solid var(--app-rule);
+	border-radius: var(--app-radius-lg);
+	background: var(--app-surface-elevated);
+}
+
+.versions-main-panel {
+	overflow: hidden;
+}
+
+.versions-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 16px 18px 12px;
+	border-bottom: 1px solid var(--app-rule);
+}
+
+.versions-title,
+.version-command-title {
+	margin: 0;
+	color: var(--app-ink-strong);
+	font-size: 15px;
+	font-weight: 680;
+	line-height: 1.3;
+}
+
+.versions-subtitle,
+.version-command-subtitle {
+	margin: 4px 0 0;
+	color: var(--app-muted);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.current-version {
+	margin-left: 6px;
+	color: var(--app-ink);
+	font-family: var(--app-mono-font);
+	font-weight: 650;
+}
+
+.versions-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.versions-alert {
+	margin: 12px 16px 0;
+}
+
+.versions-skeleton {
+	padding: 18px;
+}
+
+.versions-timeline {
+	position: relative;
+	max-height: min(520px, calc(100vh - 270px));
+	overflow-y: auto;
+	padding: 16px 18px 18px 32px;
+}
+
+.versions-timeline::before {
+	position: absolute;
+	top: 18px;
+	bottom: 18px;
+	left: 20px;
+	width: 1px;
+	background: var(--app-rule-strong);
+	content: "";
+}
+
+.version-row {
+	position: relative;
+	display: grid;
+	grid-template-columns: 14px minmax(0, 1fr);
+	gap: 12px;
+	padding-bottom: 18px;
+}
+
+.version-row:last-child {
+	padding-bottom: 0;
+}
+
+.version-marker {
+	z-index: 1;
+	width: 10px;
+	height: 10px;
+	margin-top: 7px;
+	border: 2px solid var(--app-rule-strong);
+	border-radius: 999px;
+	background: var(--app-surface-elevated);
+}
+
+.version-row--current .version-marker {
+	border-color: var(--app-success);
+	box-shadow: 0 0 0 3px var(--app-success-soft);
+}
+
+.version-body {
+	min-width: 0;
+	padding: 10px 12px;
+	border: 1px solid transparent;
+	border-radius: var(--app-radius-md);
+	background: color-mix(in srgb, var(--app-surface-panel-muted) 54%, transparent);
+}
+
+.version-row--current .version-body {
+	border-color: color-mix(in srgb, var(--app-success) 28%, var(--app-rule));
+	background: color-mix(in srgb, var(--app-success-soft) 46%, var(--app-surface-elevated));
+}
+
+.version-row-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	min-width: 0;
+}
+
+.version-id {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 8px;
+	color: var(--app-ink-strong);
+	font-family: var(--app-mono-font);
+	font-size: 13px;
+	font-weight: 680;
+}
+
+.version-time {
+	flex: 0 0 auto;
+	color: var(--app-muted);
+	font-size: 12px;
+}
+
 .version-metadata-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-	gap: 6px;
-	margin-top: 6px;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 5px 14px;
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid color-mix(in srgb, var(--app-rule) 70%, transparent);
 }
 
 .version-metadata-entry {
@@ -346,12 +535,9 @@ watch(
 	min-width: 0;
 	align-items: center;
 	gap: 6px;
-	border: 1px solid #e2e8f0;
-	border-radius: 6px;
-	background: #f8fafc;
-	padding: 4px 6px;
+	padding: 0;
 	font-size: 12px;
-	line-height: 1.4;
+	line-height: 1.5;
 }
 
 .version-metadata-key {
@@ -360,8 +546,12 @@ watch(
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	color: #64748b;
+	color: var(--app-muted);
 	font-weight: 600;
+}
+
+.version-metadata-key::after {
+	content: ":";
 }
 
 .version-metadata-value {
@@ -369,6 +559,114 @@ watch(
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	color: #334155;
+	color: var(--app-ink);
+	font-family: var(--app-mono-font);
+	font-size: 11px;
+}
+
+.version-empty-metadata {
+	margin-top: 8px;
+	color: var(--app-subtle);
+	font-size: 12px;
+}
+
+.versions-empty {
+	padding: 36px 0 42px;
+}
+
+.versions-command-panel {
+	display: grid;
+	gap: 12px;
+}
+
+.version-command-section {
+	padding: 14px;
+}
+
+.version-command-heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 14px;
+}
+
+.version-command-icon {
+	width: 18px;
+	height: 18px;
+	color: var(--app-subtle);
+}
+
+.version-field-grid {
+	display: grid;
+	gap: 10px;
+}
+
+.version-field {
+	display: grid;
+	min-width: 0;
+	gap: 5px;
+	color: var(--app-muted);
+	font-size: 12px;
+	font-weight: 620;
+	line-height: 1.2;
+}
+
+.version-field :deep(.n-input),
+.version-field :deep(.n-input-number) {
+	width: 100%;
+}
+
+.version-command-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	margin-top: 14px;
+}
+
+.version-command-actions--end {
+	justify-content: flex-end;
+}
+
+.clone-mode-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--app-rule);
+	color: var(--app-muted);
+	font-size: 12px;
+	line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+	.versions-workbench {
+		grid-template-columns: 1fr;
+	}
+
+	.versions-command-panel {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 720px) {
+	.versions-header,
+	.version-row-header,
+	.version-command-actions,
+	.clone-mode-row {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.versions-command-panel {
+		grid-template-columns: 1fr;
+	}
+
+	.versions-timeline {
+		max-height: none;
+	}
 }
 </style>

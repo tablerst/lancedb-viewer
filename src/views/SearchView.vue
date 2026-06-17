@@ -617,209 +617,226 @@ async function runCombinedQuery() {
 				/>
 			</div>
 
-			<NTabs v-model:value="activeTab" type="line">
+			<NTabs v-model:value="activeTab" type="line" class="search-mode-tabs">
 				<NTabPane name="filter" tab="过滤查询">
-					<div class="grid gap-3 xl:grid-cols-6">
-						<div class="xl:col-span-3">
-							<label class="text-sm font-medium text-[var(--app-muted)]">过滤表达式</label>
-							<NInput v-model:value="filterExpression" placeholder="id > 10" />
-						</div>
-						<div class="xl:col-span-3 grid grid-cols-2 gap-3">
+					<section class="query-builder">
+						<header class="query-builder-header">
 							<div>
-								<label class="text-sm font-medium text-[var(--app-muted)]">Limit</label>
+								<h2 class="query-builder-title">过滤查询</h2>
+								<p class="query-builder-subtitle">用 LanceDB filter 表达式读取行数据</p>
+							</div>
+							<NButton type="primary" :loading="isSearching" @click="runFilterQuery">
+								查询
+							</NButton>
+						</header>
+						<div class="query-grid">
+							<label class="query-field query-field--span-2">
+								<span>过滤表达式</span>
+								<NInput v-model:value="filterExpression" placeholder="id > 10" />
+							</label>
+							<label class="query-field">
+								<span>Limit</span>
 								<NInputNumber v-model:value="filterLimit" :min="1" />
-							</div>
-							<div>
-								<label class="text-sm font-medium text-[var(--app-muted)]">Offset</label>
+							</label>
+							<label class="query-field">
+								<span>Offset</span>
 								<NInputNumber v-model:value="filterOffset" :min="0" />
-							</div>
+							</label>
+							<label class="query-field query-field--span-2">
+								<span>列投影</span>
+								<NSelect
+									v-model:value="filterProjection"
+									:options="columnOptions"
+									multiple
+									clearable
+									placeholder="留空返回全部列"
+								/>
+							</label>
 						</div>
-					</div>
-					<div class="mt-3">
-						<label class="text-sm font-medium text-slate-600">列投影</label>
-						<NSelect
-							v-model:value="filterProjection"
-							:options="columnOptions"
-							multiple
-							clearable
-						/>
-					</div>
-					<div class="mt-3">
-						<NButton type="primary" :loading="isSearching" @click="runFilterQuery">
-							查询
-						</NButton>
-					</div>
+					</section>
 				</NTabPane>
 
 				<NTabPane name="combined" tab="混合检索">
-					<div class="grid gap-3 xl:grid-cols-6">
-						<div class="xl:col-span-3">
-							<label class="text-sm font-medium text-slate-600">全文查询</label>
-							<NInput v-model:value="combinedQuery" placeholder="item 1" />
+					<section class="query-builder">
+						<header class="query-builder-header">
+							<div>
+								<h2 class="query-builder-title">混合检索</h2>
+								<p class="query-builder-subtitle">同时提交全文查询和向量输入，结果由 RRF 融合</p>
+							</div>
+							<NButton type="primary" :loading="isSearching" @click="runCombinedQuery">
+								混合检索
+							</NButton>
+						</header>
+						<div class="query-grid query-grid--hybrid">
+							<label class="query-field query-field--span-2">
+								<span>全文查询</span>
+								<NInput v-model:value="combinedQuery" placeholder="item 1" />
+							</label>
+							<label class="query-field query-field--span-2">
+								<span>向量输入</span>
+								<NInput
+									v-model:value="combinedVectorText"
+									placeholder="0.1, 0.2, 0.3"
+								/>
+							</label>
+							<label class="query-field">
+								<span>向量列</span>
+								<NSelect
+									v-model:value="combinedVectorColumn"
+									:options="columnOptions"
+									clearable
+								/>
+							</label>
+							<label class="query-field">
+								<span>全文列</span>
+								<NSelect
+									v-model:value="combinedColumns"
+									:options="columnOptions"
+									multiple
+									clearable
+								/>
+							</label>
+							<label class="query-field query-field--span-2">
+								<span>Filter</span>
+								<NInput v-model:value="combinedFilter" placeholder="id > 10" />
+							</label>
+							<label class="query-field query-field--compact">
+								<span>Limit</span>
+								<NInputNumber v-model:value="combinedLimit" :min="1" />
+							</label>
+							<label class="query-field query-field--compact">
+								<span>Offset</span>
+								<NInputNumber v-model:value="combinedOffset" :min="0" />
+							</label>
+							<label class="query-field query-field--compact">
+								<span>nprobes</span>
+								<NInputNumber v-model:value="combinedNprobes" :min="1" />
+							</label>
+							<label class="query-field query-field--compact">
+								<span>refine</span>
+								<NInputNumber v-model:value="combinedRefine" :min="1" />
+							</label>
+							<label class="query-field query-field--full">
+								<span>列投影</span>
+								<NSelect
+									v-model:value="combinedProjection"
+									:options="columnOptions"
+									multiple
+									clearable
+									placeholder="留空返回全部列"
+								/>
+							</label>
 						</div>
-						<div class="xl:col-span-3">
-							<label class="text-sm font-medium text-slate-600">向量输入</label>
-							<NInput v-model:value="combinedVectorText" placeholder="0.1, 0.2, 0.3" />
-						</div>
-					</div>
-					<div class="mt-3 grid gap-3 xl:grid-cols-6">
-						<div class="xl:col-span-2">
-							<label class="text-sm font-medium text-slate-600">向量列</label>
-							<NSelect
-								v-model:value="combinedVectorColumn"
-								:options="columnOptions"
-								clearable
-							/>
-						</div>
-						<div class="xl:col-span-2">
-							<label class="text-sm font-medium text-slate-600">全文列</label>
-							<NSelect
-								v-model:value="combinedColumns"
-								:options="columnOptions"
-								multiple
-								clearable
-							/>
-						</div>
-						<div class="xl:col-span-2">
-							<label class="text-sm font-medium text-slate-600">Filter</label>
-							<NInput v-model:value="combinedFilter" placeholder="id > 10" />
-						</div>
-					</div>
-					<div class="mt-3 grid gap-3 xl:grid-cols-6">
-						<div class="xl:col-span-2">
-							<label class="text-sm font-medium text-slate-600">Limit</label>
-							<NInputNumber v-model:value="combinedLimit" :min="1" />
-						</div>
-						<div class="xl:col-span-2">
-							<label class="text-sm font-medium text-slate-600">Offset</label>
-							<NInputNumber v-model:value="combinedOffset" :min="0" />
-						</div>
-						<div class="xl:col-span-1">
-							<label class="text-sm font-medium text-slate-600">nprobes</label>
-							<NInputNumber v-model:value="combinedNprobes" :min="1" />
-						</div>
-						<div class="xl:col-span-1">
-							<label class="text-sm font-medium text-slate-600">refine</label>
-							<NInputNumber v-model:value="combinedRefine" :min="1" />
-						</div>
-					</div>
-					<div class="mt-3">
-						<label class="text-sm font-medium text-slate-600">列投影</label>
-						<NSelect
-							v-model:value="combinedProjection"
-							:options="columnOptions"
-							multiple
-							clearable
-						/>
-					</div>
-					<div class="mt-3">
-						<NButton type="primary" :loading="isSearching" @click="runCombinedQuery">
-							混合检索
-						</NButton>
-					</div>
+					</section>
 				</NTabPane>
 
 				<NTabPane name="vector" tab="向量检索">
-					<div class="grid gap-3 xl:grid-cols-6">
-						<div class="xl:col-span-3">
-							<label class="text-sm font-medium text-slate-600">向量输入</label>
-							<NInput v-model:value="vectorText" placeholder="0.1, 0.2, 0.3" />
-						</div>
-						<div class="xl:col-span-3 grid grid-cols-2 gap-3">
+					<section class="query-builder">
+						<header class="query-builder-header">
 							<div>
-								<label class="text-sm font-medium text-slate-600">向量列</label>
+								<h2 class="query-builder-title">向量检索</h2>
+								<p class="query-builder-subtitle">输入向量并选择向量列，返回最近邻结果</p>
+							</div>
+							<NButton type="primary" :loading="isSearching" @click="runVectorQuery">
+								检索
+							</NButton>
+						</header>
+						<div class="query-grid">
+							<label class="query-field query-field--span-2">
+								<span>向量输入</span>
+								<NInput v-model:value="vectorText" placeholder="0.1, 0.2, 0.3" />
+							</label>
+							<label class="query-field">
+								<span>向量列</span>
 								<NSelect
 									v-model:value="vectorColumn"
 									:options="columnOptions"
 									clearable
 								/>
-							</div>
-							<div>
-								<label class="text-sm font-medium text-slate-600">Top K</label>
+							</label>
+							<label class="query-field query-field--compact">
+								<span>Top K</span>
 								<NInputNumber v-model:value="vectorTopK" :min="1" />
-							</div>
+							</label>
+							<label class="query-field">
+								<span>Filter</span>
+								<NInput v-model:value="vectorFilter" placeholder="id > 10" />
+							</label>
+							<label class="query-field query-field--compact">
+								<span>Offset</span>
+								<NInputNumber v-model:value="vectorOffset" :min="0" />
+							</label>
+							<label class="query-field query-field--compact">
+								<span>nprobes</span>
+								<NInputNumber v-model:value="vectorNprobes" :min="1" />
+							</label>
+							<label class="query-field query-field--compact">
+								<span>refine</span>
+								<NInputNumber v-model:value="vectorRefine" :min="1" />
+							</label>
+							<label class="query-field query-field--full">
+								<span>列投影</span>
+								<NSelect
+									v-model:value="vectorProjection"
+									:options="columnOptions"
+									multiple
+									clearable
+									placeholder="留空返回全部列"
+								/>
+							</label>
 						</div>
-					</div>
-					<div class="mt-3 grid gap-3 xl:grid-cols-4">
-						<div>
-							<label class="text-sm font-medium text-slate-600">Offset</label>
-							<NInputNumber v-model:value="vectorOffset" :min="0" />
-						</div>
-						<div>
-							<label class="text-sm font-medium text-slate-600">nprobes</label>
-							<NInputNumber v-model:value="vectorNprobes" :min="1" />
-						</div>
-						<div>
-							<label class="text-sm font-medium text-slate-600">refine factor</label>
-							<NInputNumber v-model:value="vectorRefine" :min="1" />
-						</div>
-						<div>
-							<label class="text-sm font-medium text-slate-600">Filter</label>
-							<NInput v-model:value="vectorFilter" placeholder="id > 10" />
-						</div>
-					</div>
-					<div class="mt-3">
-						<label class="text-sm font-medium text-slate-600">列投影</label>
-						<NSelect
-							v-model:value="vectorProjection"
-							:options="columnOptions"
-							multiple
-							clearable
-						/>
-					</div>
-					<div class="mt-3">
-						<NButton type="primary" :loading="isSearching" @click="runVectorQuery">
-							检索
-						</NButton>
-					</div>
+					</section>
 				</NTabPane>
 
 				<NTabPane name="fts" tab="全文检索">
-					<div class="grid gap-3 xl:grid-cols-6">
-						<div class="xl:col-span-3">
-							<label class="text-sm font-medium text-slate-600">查询文本</label>
-							<NInput v-model:value="ftsQuery" placeholder="item 1" />
-						</div>
-						<div class="xl:col-span-3 grid grid-cols-2 gap-3">
+					<section class="query-builder">
+						<header class="query-builder-header">
 							<div>
-								<label class="text-sm font-medium text-slate-600">Limit</label>
+								<h2 class="query-builder-title">全文检索</h2>
+								<p class="query-builder-subtitle">提交全文查询并限制检索列或结果范围</p>
+							</div>
+							<NButton type="primary" :loading="isSearching" @click="runFtsQuery">
+								检索
+							</NButton>
+						</header>
+						<div class="query-grid">
+							<label class="query-field query-field--span-2">
+								<span>查询文本</span>
+								<NInput v-model:value="ftsQuery" placeholder="item 1" />
+							</label>
+							<label class="query-field">
+								<span>索引列</span>
+								<NSelect
+									v-model:value="ftsColumns"
+									:options="columnOptions"
+									multiple
+									clearable
+								/>
+							</label>
+							<label class="query-field">
+								<span>Filter</span>
+								<NInput v-model:value="ftsFilter" placeholder="id > 10" />
+							</label>
+							<label class="query-field query-field--compact">
+								<span>Limit</span>
 								<NInputNumber v-model:value="ftsLimit" :min="1" />
-							</div>
-							<div>
-								<label class="text-sm font-medium text-slate-600">Offset</label>
+							</label>
+							<label class="query-field query-field--compact">
+								<span>Offset</span>
 								<NInputNumber v-model:value="ftsOffset" :min="0" />
-							</div>
+							</label>
+							<label class="query-field query-field--full">
+								<span>列投影</span>
+								<NSelect
+									v-model:value="ftsProjection"
+									:options="columnOptions"
+									multiple
+									clearable
+									placeholder="留空返回全部列"
+								/>
+							</label>
 						</div>
-					</div>
-					<div class="mt-3 grid gap-3 xl:grid-cols-2">
-						<div>
-							<label class="text-sm font-medium text-slate-600">索引列</label>
-							<NSelect
-								v-model:value="ftsColumns"
-								:options="columnOptions"
-								multiple
-								clearable
-							/>
-						</div>
-						<div>
-							<label class="text-sm font-medium text-slate-600">Filter</label>
-							<NInput v-model:value="ftsFilter" placeholder="id > 10" />
-						</div>
-					</div>
-					<div class="mt-3">
-						<label class="text-sm font-medium text-slate-600">列投影</label>
-						<NSelect
-							v-model:value="ftsProjection"
-							:options="columnOptions"
-							multiple
-							clearable
-						/>
-					</div>
-					<div class="mt-3">
-						<NButton type="primary" :loading="isSearching" @click="runFtsQuery">
-							检索
-						</NButton>
-					</div>
+					</section>
 				</NTabPane>
 			</NTabs>
 
@@ -913,9 +930,112 @@ async function runCombinedQuery() {
 	box-shadow: none;
 }
 
+.search-mode-tabs :deep(.n-tabs-pane-wrapper) {
+	padding-top: 10px;
+}
+
+.query-builder {
+	border: 1px solid var(--app-rule);
+	border-radius: var(--app-radius-lg);
+	background: var(--app-surface-elevated);
+	padding: 14px;
+}
+
+.query-builder-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 14px;
+	margin-bottom: 14px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--app-rule);
+}
+
+.query-builder-title {
+	margin: 0;
+	color: var(--app-ink-strong);
+	font-size: 15px;
+	font-weight: 680;
+	line-height: 1.3;
+}
+
+.query-builder-subtitle {
+	margin: 4px 0 0;
+	color: var(--app-muted);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.query-grid {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 12px;
+	align-items: end;
+}
+
+.query-grid--hybrid {
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.query-field {
+	display: grid;
+	min-width: 0;
+	gap: 5px;
+	color: var(--app-muted);
+	font-size: 12px;
+	font-weight: 620;
+	line-height: 1.2;
+}
+
+.query-field--span-2 {
+	grid-column: span 2;
+}
+
+.query-field--full {
+	grid-column: 1 / -1;
+}
+
+.query-field--compact {
+	min-width: 104px;
+}
+
+.query-field :deep(.n-input),
+.query-field :deep(.n-input-number),
+.query-field :deep(.n-base-selection) {
+	width: 100%;
+}
+
+.query-field :deep(.n-input-number-button) {
+	width: 24px;
+}
+
 :deep(label),
 :deep(.text-slate-600),
 :deep(.text-slate-500) {
 	color: var(--app-muted);
+}
+
+@media (max-width: 1180px) {
+	.query-grid,
+	.query-grid--hybrid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 700px) {
+	.query-builder-header {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.query-grid,
+	.query-grid--hybrid {
+		grid-template-columns: 1fr;
+	}
+
+	.query-field--span-2,
+	.query-field--full {
+		grid-column: auto;
+	}
 }
 </style>
