@@ -68,12 +68,12 @@ function clearFilter(column: string) {
 
 <style scoped>
 .datagrid-filter-row {
-	background: #f1f5f9;
+	background: var(--app-surface-panel-muted);
 }
 
 .datagrid-filter-cell {
 	padding: 4px 6px;
-	border-bottom: 2px solid #e2e8f0;
+	border-bottom: 2px solid var(--app-rule);
 }
 
 .datagrid-filter-wrapper {
@@ -85,21 +85,22 @@ function clearFilter(column: string) {
 .datagrid-filter-input {
 	width: 100%;
 	padding: 3px 22px 3px 8px;
-	border: 1px solid #cbd5e1;
+	border: 1px solid var(--app-rule-strong);
 	border-radius: 4px;
 	font-size: 12px;
-	background: white;
+	background: var(--app-control);
+	color: var(--app-ink);
 	line-height: 18px;
 }
 
 .datagrid-filter-input:focus {
-	border-color: #38bdf8;
+	border-color: var(--app-accent);
 	outline: none;
 	box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.15);
 }
 
 .datagrid-filter-input:disabled {
-	background: #f1f5f9;
+	background: var(--app-surface-panel-muted);
 	cursor: not-allowed;
 }
 
@@ -114,13 +115,13 @@ function clearFilter(column: string) {
 	border: none;
 	border-radius: 50%;
 	background: transparent;
-	color: #94a3b8;
+	color: var(--app-subtle);
 	cursor: pointer;
 	padding: 0;
 }
 
 .datagrid-filter-clear:hover {
-	color: #475569;
-	background: #e2e8f0;
+	color: var(--app-ink);
+	background: var(--app-control-hover);
 }
 </style>

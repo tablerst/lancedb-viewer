@@ -445,14 +445,16 @@ function hasColumnFilter(columnKey: string): boolean {
 
 <style scoped>
 .datagrid-container {
-	border: 1px solid #e2e8f0;
+	border: 1px solid var(--app-rule);
 	border-radius: 8px;
 	overflow: hidden;
 	font-size: 13px;
 	display: flex;
 	flex-direction: column;
-	background: white;
+	background: var(--app-surface-elevated);
+	color: var(--app-ink);
 	outline: none;
+	box-shadow: var(--app-shadow-whisper);
 }
 
 .datagrid-table-wrapper {
@@ -470,14 +472,14 @@ function hasColumnFilter(columnKey: string): boolean {
 
 /* Header */
 .datagrid-header-row {
-	background: #f8fafc;
+	background: var(--app-surface-panel-muted);
 }
 
 .datagrid-header-cell {
 	padding: 8px 12px;
-	border-bottom: 1px solid #e2e8f0;
+	border-bottom: 1px solid var(--app-rule);
 	font-weight: 600;
-	color: #334155;
+	color: var(--app-ink);
 	text-align: left;
 	white-space: nowrap;
 	user-select: none;
@@ -488,11 +490,11 @@ function hasColumnFilter(columnKey: string): boolean {
 }
 
 .datagrid-header-cell:hover {
-	background: #f1f5f9;
+	background: var(--app-control-hover);
 }
 
 .datagrid-header-cell--filtered {
-	background: #f0f9ff;
+	background: var(--app-accent-soft);
 }
 
 .datagrid-header-content {
@@ -523,7 +525,7 @@ function hasColumnFilter(columnKey: string): boolean {
 	border: none;
 	border-radius: 3px;
 	background: transparent;
-	color: #94a3b8;
+	color: var(--app-subtle);
 	cursor: pointer;
 	padding: 0;
 	flex-shrink: 0;
@@ -535,8 +537,8 @@ function hasColumnFilter(columnKey: string): boolean {
 }
 
 .datagrid-header-menu-trigger:hover {
-	background: #e2e8f0;
-	color: #475569;
+	background: var(--app-control-hover);
+	color: var(--app-ink);
 }
 
 /* Resize handle */
@@ -551,29 +553,29 @@ function hasColumnFilter(columnKey: string): boolean {
 }
 
 .datagrid-resize-handle:hover {
-	background: #38bdf8;
+	background: var(--app-accent);
 }
 
 /* Body rows */
 .datagrid-body-row {
-	border-bottom: 1px solid #f1f5f9;
+	border-bottom: 1px solid var(--app-rule);
 	transition: background 0.1s;
 }
 
 .datagrid-body-row:hover {
-	background: #f8fafc;
+	background: var(--app-surface-panel-muted);
 }
 
 .datagrid-row--dirty {
-	background: #fffbeb !important;
+	background: var(--app-warning-soft);
 }
 
 .datagrid-row--new {
-	background: #f0fdf4 !important;
+	background: var(--app-success-soft);
 }
 
 .datagrid-row--deleted {
-	background: #fef2f2 !important;
+	background: var(--app-danger-soft);
 	text-decoration: line-through;
 	opacity: 0.6;
 }
@@ -582,7 +584,7 @@ function hasColumnFilter(columnKey: string): boolean {
 .datagrid-empty {
 	padding: 40px;
 	text-align: center;
-	color: #94a3b8;
+	color: var(--app-subtle);
 	font-style: italic;
 }
 
@@ -594,7 +596,12 @@ function hasColumnFilter(columnKey: string): boolean {
 .datagrid-skeleton-row {
 	height: 28px;
 	margin-bottom: 6px;
-	background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+	background: linear-gradient(
+		90deg,
+		var(--app-surface-panel-muted) 25%,
+		var(--app-control-hover) 50%,
+		var(--app-surface-panel-muted) 75%
+	);
 	background-size: 200% 100%;
 	animation: skeleton-shimmer 1.5s ease-in-out infinite;
 	border-radius: 4px;
@@ -609,7 +616,7 @@ function hasColumnFilter(columnKey: string): boolean {
 .datagrid-loading-overlay {
 	position: absolute;
 	inset: 0;
-	background: rgba(255, 255, 255, 0.6);
+	background: color-mix(in srgb, var(--app-surface-elevated) 70%, transparent);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -619,8 +626,8 @@ function hasColumnFilter(columnKey: string): boolean {
 .datagrid-loading-spinner {
 	width: 24px;
 	height: 24px;
-	border: 3px solid #e2e8f0;
-	border-top-color: #38bdf8;
+	border: 3px solid var(--app-rule);
+	border-top-color: var(--app-accent);
 	border-radius: 50%;
 	animation: spin 0.8s linear infinite;
 }

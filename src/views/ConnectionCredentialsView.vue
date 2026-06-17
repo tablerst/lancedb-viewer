@@ -289,7 +289,7 @@ onMounted(() => {
 
 <template>
 	<div class="space-y-4">
-		<NCard size="small" title="连接凭证" class="shadow-sm">
+		<NCard size="small" title="连接凭证" class="credentials-card">
 			<div class="space-y-3">
 				<div class="flex flex-wrap items-center justify-between gap-2">
 					<div class="min-w-0">
@@ -326,9 +326,9 @@ onMounted(() => {
 					{{ errorMessage }}
 				</NAlert>
 
-				<div class="rounded-md border border-slate-100 bg-slate-50/60 p-3">
+				<div class="credential-panel">
 					<div class="flex items-center justify-between gap-3">
-						<div class="text-xs font-medium text-slate-700">认证配置</div>
+						<div class="text-xs font-medium text-[var(--app-ink)]">认证配置</div>
 						<NSwitch v-model:value="form.enabled" size="small" :disabled="!resolvedProfile" />
 					</div>
 
@@ -379,10 +379,10 @@ onMounted(() => {
 								</div>
 							</div>
 
-							<div v-if="selectedCredential" class="rounded-md bg-white p-2 text-xs text-slate-600">
+							<div v-if="selectedCredential" class="credential-summary">
 								<div class="flex flex-wrap items-center justify-between gap-2">
-									<div class="font-medium text-slate-700">已选择的凭证摘要</div>
-									<div class="text-[11px] text-slate-400">更新时间：{{ selectedCredential.updatedAt }}</div>
+									<div class="font-medium text-[var(--app-ink)]">已选择的凭证摘要</div>
+									<div class="text-[11px] text-[var(--app-subtle)]">更新时间：{{ selectedCredential.updatedAt }}</div>
 								</div>
 								<div class="mt-1">Provider：{{ selectedCredential.provider }}</div>
 								<div class="mt-1">Label：{{ selectedCredential.label ?? "—" }}</div>
@@ -395,13 +395,13 @@ onMounted(() => {
 					</div>
 				</div>
 
-				<div class="mt-3 rounded-md border border-slate-100 bg-white p-3">
-					<div class="text-xs font-medium text-slate-700">当前生效</div>
-					<div class="mt-1 text-sm text-slate-700">{{ savedAuthTitle }}</div>
+				<div class="credential-summary mt-3">
+					<div class="text-xs font-medium text-[var(--app-ink)]">当前生效</div>
+					<div class="mt-1 text-sm text-[var(--app-ink)]">{{ savedAuthTitle }}</div>
 					<div v-if="savedReference" class="mt-2 space-y-1">
-						<div class="text-xs text-slate-500">reference</div>
-						<div class="font-mono text-xs text-slate-600">{{ savedReference }}</div>
-						<div class="text-[11px] text-slate-400">
+						<div class="text-xs text-[var(--app-muted)]">reference</div>
+						<div class="font-mono text-xs text-[var(--app-ink)]">{{ savedReference }}</div>
+						<div class="text-[11px] text-[var(--app-subtle)]">
 							复用情况：{{ referencedByProfiles.length }} 个连接引用该凭证。
 						</div>
 						<div v-if="referencedByProfiles.length > 1" class="mt-1 flex flex-wrap gap-2">
@@ -415,7 +415,7 @@ onMounted(() => {
 							</NTag>
 						</div>
 					</div>
-					<div class="mt-2 text-[11px] text-slate-400">
+					<div class="mt-2 text-[11px] text-[var(--app-subtle)]">
 						建议在“连接”维度配置认证；Stronghold 全局凭证库仅用于查看与回收未引用凭证。
 					</div>
 				</div>
@@ -425,3 +425,29 @@ onMounted(() => {
 		<NEmpty v-if="!resolvedProfile" description="请先选择连接" />
 	</div>
 </template>
+
+<style scoped>
+.credentials-card {
+	background: var(--app-surface-elevated);
+	box-shadow: var(--app-shadow-whisper);
+}
+
+.credential-panel,
+.credential-summary {
+	border: 1px solid var(--app-rule);
+	border-radius: 8px;
+	background: var(--app-surface-panel-muted);
+	padding: 12px;
+	color: var(--app-ink);
+}
+
+.credential-summary {
+	background: var(--app-surface-elevated);
+}
+
+:deep(label),
+:deep(.text-slate-500),
+:deep(.text-slate-400) {
+	color: var(--app-muted);
+}
+</style>

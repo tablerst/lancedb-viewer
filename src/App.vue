@@ -156,10 +156,10 @@ watch(
 		:date-locale="dateZhCN"
 	>
 		<NGlobalStyle />
-		<NMessageProvider>
+		<NMessageProvider placement="bottom-right">
 			<NDialogProvider>
 				<StatusMessageBridge :status-message="statusMessage" :error-message="errorMessage" />
-				<div class="h-screen w-screen overflow-hidden bg-slate-50">
+				<div class="h-screen w-screen overflow-hidden bg-[var(--app-surface)] text-[var(--app-ink)]">
 					<div v-if="isDialogRoute" class="h-full w-full">
 						<RouterView />
 					</div>
@@ -177,7 +177,7 @@ watch(
 							:on-open-table="openTable"
 						/>
 
-						<main class="min-w-0 flex-1 flex flex-col overflow-hidden">
+						<main class="min-w-0 flex-1 flex flex-col overflow-hidden bg-[var(--app-surface)]">
 							<div v-if="errorMessage" class="px-6 pt-4">
 								<NAlert
 									type="error"
@@ -187,7 +187,7 @@ watch(
 									{{ errorMessage }}
 								</NAlert>
 							</div>
-							<div class="min-h-0 flex-1 overflow-y-auto p-6">
+							<div class="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
 								<div :class="isFullWidthRoute ? 'w-full h-full' : 'mx-auto w-full max-w-[1600px]'">
 									<RouterView />
 								</div>

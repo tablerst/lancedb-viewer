@@ -85,6 +85,10 @@ const avatarBgClass = computed(() => {
 	return "bg-slate-100 text-slate-500"
 })
 const tableCount = computed(() => tables.value.length)
+const collapsedLabel = computed(() => {
+	const tableSummary = isConnected.value ? `，${tableCount.value} 张表` : ""
+	return `${props.profile.name}，${statusText.value}，${kindLabel.value}${tableSummary}`
+})
 
 const isExpanded = ref(true)
 const tableListHeight = computed(() => Math.min(tables.value.length * 32, 200))
@@ -165,6 +169,8 @@ function handleContextMenu(event: MouseEvent) {
 				<template #trigger>
 					<button
 						class="group/btn flex w-full flex-col items-center gap-1 rounded-md px-1 py-1 text-center transition hover:bg-slate-100/70 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-400"
+						:aria-label="collapsedLabel"
+						:title="collapsedLabel"
 						@click="emit('select')"
 					>
 						<div class="relative">
@@ -179,6 +185,9 @@ function handleContextMenu(event: MouseEvent) {
 								:class="statusDotClass"
 							/>
 						</div>
+						<span class="max-w-full truncate text-[10px] font-medium text-slate-500">
+							{{ isConnected ? `${tableCount} 表` : kindLabel }}
+						</span>
 					</button>
 				</template>
 				<div class="space-y-1 text-xs">
@@ -319,3 +328,23 @@ function handleContextMenu(event: MouseEvent) {
 		</div>
 	</NCard>
 </template>
+
+<style scoped>
+:deep(.n-card) {
+	background: var(--app-surface-elevated);
+	border-color: var(--app-rule);
+	color: var(--app-ink);
+}
+
+:deep(.n-card:hover) {
+	border-color: var(--app-rule-strong);
+}
+
+:deep(.n-card__content) {
+	color: var(--app-ink);
+}
+
+.group {
+	color: var(--app-ink);
+}
+</style>

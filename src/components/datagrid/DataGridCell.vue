@@ -33,6 +33,39 @@ const isBinary = computed(() => isBinaryType(props.dataType))
 const isNumeric = computed(() => isNumericType(props.dataType))
 const isBoolType = computed(() => props.dataType.toLowerCase() === "boolean")
 const isNull = computed(() => props.value === null || props.value === undefined)
+const formattedValue = computed(() => formatCellValue(props.value))
+const detailText = computed(() => formatInspectableValue(props.value))
+const hasInspectableValue = computed(() => {
+	if (isNull.value || isBinary.value || typeof props.value === "boolean") {
+		return false
+	}
+	if (Array.isArray(props.value)) {
+		return props.value.length > 4
+	}
+	if (typeof props.value === "object") {
+		return props.value !== null
+	}
+	return formattedValue.value.length > 48
+})
+const previewText = computed(() => {
+	if (Array.isArray(props.value)) {
+		const preview = props.value
+			.slice(0, 4)
+			.map((v) => formatCellValue(v))
+			.join(", ")
+		return `[${props.value.length}d] ${preview}${props.value.length > 4 ? ", ..." : ""}`
+	}
+	return formattedValue.value
+})
+const previewBody = computed(() => {
+	if (Array.isArray(props.value)) {
+		return `${props.value
+			.slice(0, 4)
+			.map((v) => formatCellValue(v))
+			.join(", ")}${props.value.length > 4 ? ", ..." : ""}`
+	}
+	return previewText.value
+})
 
 // Initialize edit value when editing starts
 watch(
@@ -113,6 +146,20 @@ function handleDblClick() {
 		emit("start-edit")
 	}
 }
+
+function formatInspectableValue(value: unknown): string {
+	if (typeof value === "string") {
+		return value
+	}
+	if (Array.isArray(value) || (value !== null && typeof value === "object")) {
+		try {
+			return JSON.stringify(value, null, 2)
+		} catch {
+			return String(value)
+		}
+	}
+	return formatCellValue(value)
+}
 </script>
 
 <template>
@@ -164,18 +211,44 @@ function handleDblClick() {
 		<!-- View mode -->
 		<template v-else>
 			<span v-if="isNull" class="datagrid-null">NULL</span>
-			<span v-else-if="typeof value === 'boolean'" class="select-none">
-				{{ value ? "✅" : "❌" }}
+			<span
+				v-else-if="typeof value === 'boolean'"
+				class="datagrid-bool"
+				:class="value ? 'datagrid-bool--true' : 'datagrid-bool--false'"
+			>
+				{{ value ? "true" : "false" }}
 			</span>
-			<span v-else-if="Array.isArray(value)" class="font-mono text-xs">
-				<span class="mr-1 text-slate-400">[{{ value.length }}d]</span>
-				{{ value.slice(0, 4).map((v) => formatCellValue(v)).join(", ")
-				}}{{ value.length > 4 ? ", …" : "" }}
+			<NPopover
+				v-else-if="hasInspectableValue"
+				trigger="click"
+				placement="bottom-start"
+				:show-arrow="false"
+				scrollable
+				style="max-width: min(720px, calc(100vw - 48px)); max-height: 420px"
+			>
+				<template #trigger>
+					<button
+						class="datagrid-cell-detail"
+						:title="previewText"
+						@click.stop
+						@dblclick.stop="emit('start-edit')"
+					>
+						<span v-if="Array.isArray(value)" class="datagrid-vector-dim">
+							[{{ value.length }}d]
+						</span>
+						<span>{{ previewBody }}</span>
+					</button>
+				</template>
+				<pre class="datagrid-cell-popover">{{ detailText }}</pre>
+			</NPopover>
+			<span v-else-if="Array.isArray(value)" class="datagrid-cell-mono">
+				<span class="datagrid-vector-dim">[{{ value.length }}d]</span>
+				{{ value.slice(0, 4).map((v) => formatCellValue(v)).join(", ") }}
 			</span>
-			<span v-else-if="isBinary" class="font-mono text-xs text-slate-400">
+			<span v-else-if="isBinary" class="datagrid-cell-mono datagrid-cell-muted">
 				Binary
 			</span>
-			<span v-else>{{ formatCellValue(value) }}</span>
+			<span v-else>{{ formattedValue }}</span>
 		</template>
 	</td>
 </template>
@@ -191,6 +264,7 @@ function handleDblClick() {
 	position: relative;
 	height: 32px;
 	line-height: 24px;
+	color: var(--app-ink);
 }
 
 .datagrid-cell--readonly {
@@ -198,33 +272,100 @@ function handleDblClick() {
 }
 
 .datagrid-cell--null .datagrid-null {
-	color: #94a3b8;
+	color: var(--app-subtle);
 	font-style: italic;
 	user-select: none;
 }
 
 .datagrid-cell--dirty {
-	background: #fffbeb;
+	background: var(--app-warning-soft);
 }
 
 .datagrid-cell--editing {
 	padding: 2px 4px;
-	background: #fefce8;
+	background: var(--app-warning-soft);
 }
 
 .datagrid-cell-input {
 	width: 100%;
 	padding: 2px 6px;
-	border: 2px solid #38bdf8;
+	border: 2px solid var(--app-accent);
 	border-radius: 3px;
 	font-size: 13px;
 	font-family: inherit;
 	line-height: 20px;
 	outline: none;
-	background: white;
+	background: var(--app-control);
+	color: var(--app-ink);
 }
 
 .datagrid-cell-input:focus {
 	box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.datagrid-cell-detail {
+	display: inline-flex;
+	max-width: 100%;
+	align-items: center;
+	gap: 4px;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	cursor: zoom-in;
+	font: inherit;
+	padding: 0;
+	text-align: left;
+	vertical-align: top;
+}
+
+.datagrid-cell-detail span:last-child {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.datagrid-cell-detail:hover {
+	color: var(--app-accent);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.datagrid-cell-mono,
+.datagrid-cell-popover {
+	font-family: var(--app-mono-font);
+	font-size: 12px;
+}
+
+.datagrid-cell-popover {
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: var(--app-ink);
+}
+
+.datagrid-cell-muted,
+.datagrid-vector-dim {
+	color: var(--app-subtle);
+}
+
+.datagrid-bool {
+	display: inline-flex;
+	align-items: center;
+	border-radius: 999px;
+	padding: 1px 7px;
+	font-family: var(--app-mono-font);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 18px;
+}
+
+.datagrid-bool--true {
+	background: var(--app-success-soft);
+	color: #0f766e;
+}
+
+.datagrid-bool--false {
+	background: var(--app-danger-soft);
+	color: #dc2626;
 }
 </style>

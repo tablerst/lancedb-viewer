@@ -17,7 +17,7 @@ import {
 import { useDialog } from "naive-ui"
 import type { DropdownMixedOption } from "naive-ui/lib/dropdown/src/interface"
 import { computed, h, onBeforeUnmount, onMounted, ref } from "vue"
-import { useRouter } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 
 import type { ConnectionState } from "../../composables/useConnection"
 import { useWorkspace } from "../../composables/workspaceContext"
@@ -39,6 +39,7 @@ const props = defineProps<{
 }>()
 
 const isCollapsed = ref(false)
+const route = useRoute()
 const router = useRouter()
 const dialog = useDialog()
 
@@ -88,6 +89,7 @@ const filteredProfiles = computed(() => {
 })
 
 const shouldVirtualize = computed(() => isCollapsed.value && filteredProfiles.value.length > 12)
+const isSearchRoute = computed(() => route.name === "search" || route.name === "connection-search")
 
 const sidebarWidth = computed(() => (isCollapsed.value ? collapsedWidth : expandedWidth))
 const virtualItemSize = computed(() => (isCollapsed.value ? collapsedItemSize : 92))
@@ -225,9 +227,13 @@ async function handleDeleteProfile(profileId: string) {
 async function selectAndOpenTable(profileId: string, tableName: string) {
 	await props.onSelectProfile(profileId)
 	await props.onOpenTable(profileId, tableName)
-	// Keep the URL in sync with the selected connection + table.
-	// Without this, the app may stay on "/" (no :id param), and ExplorerView's
-	// inner tab switching (schema/data/indexes/versions) becomes a no-op.
+	if (isSearchRoute.value) {
+		await router.push({
+			name: "connection-search",
+			params: { id: profileId },
+		})
+		return
+	}
 	await router.push({
 		name: "table-tab",
 		params: { id: profileId, tableName, tab: "schema" },
@@ -236,8 +242,10 @@ async function selectAndOpenTable(profileId: string, tableName: string) {
 
 async function handleSelectProfile(profileId: string) {
 	await props.onSelectProfile(profileId)
-	// Keep the URL in sync with the selected connection so downstream views can
-	// rely on route params (e.g. :id).
+	if (isSearchRoute.value) {
+		await router.push({ name: "connection-search", params: { id: profileId } })
+		return
+	}
 	await router.push({ name: "connection-explorer", params: { id: profileId } })
 }
 
@@ -528,11 +536,11 @@ async function handleContextMenuSelect(key: string | number) {
 }
 
 .filter-radio-grid :deep(.n-radio-button) {
-	border-radius: 8px !important;
+	border-radius: 8px;
 }
 
 .filter-radio-grid :deep(.n-radio-button:not(:first-child)) {
-	border-left-width: 1px !important;
+	border-left-width: 1px;
 }
 
 .filter-radio-grid :deep(.n-radio-button__content) {

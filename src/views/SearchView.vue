@@ -2,7 +2,7 @@
 import { Database, Search } from "lucide-vue-next"
 import type { DataTableColumns, SelectOption } from "naive-ui"
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
-import { useRoute } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 
 import DataResultTable from "../components/DataResultTable.vue"
 import { useWorkspace } from "../composables/workspaceContext"
@@ -32,6 +32,7 @@ const {
 	profiles,
 	activeProfileId,
 	connectionStates,
+	connectProfile,
 	openTable,
 	setStatus,
 	setError,
@@ -39,6 +40,7 @@ const {
 } = useWorkspace()
 
 const route = useRoute()
+const router = useRouter()
 
 const routeProfileId = computed(() => {
 	const raw = route.params.id
@@ -89,6 +91,32 @@ const hasActiveTable = computed(() => Boolean(scopedActiveTableId.value))
 const tableOptions = computed<SelectOption[]>(() =>
 	scopedTables.value.map((item) => ({ label: item.name, value: item.name }))
 )
+const onlyTableName = computed(() =>
+	scopedTables.value.length === 1 ? (scopedTables.value[0]?.name ?? null) : null
+)
+
+function goToConnections() {
+	const id = scopedProfileId.value
+	void router.push(id ? `/connections/${id}` : "/")
+}
+
+async function connectScopedProfile() {
+	const id = scopedProfileId.value
+	if (!id) {
+		goToConnections()
+		return
+	}
+	clearMessages()
+	await connectProfile(id)
+}
+
+async function selectOnlyTable() {
+	const tableName = onlyTableName.value
+	if (!tableName) {
+		return
+	}
+	await onTableSelect(tableName)
+}
 
 async function onTableSelect(name: string | null) {
 	const id = scopedProfileId.value
@@ -494,51 +522,65 @@ async function runCombinedQuery() {
 	<div class="space-y-4">
 		<div
 			v-if="!scopedProfileId"
-			class="flex flex-col items-center justify-center gap-3 py-20 text-center"
+			class="app-empty-state"
 		>
 			<div
-				class="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"
+				class="app-empty-state-icon"
 			>
 				<Database class="h-7 w-7" />
 			</div>
 			<div>
-				<div class="text-base font-semibold text-slate-700">选择连接</div>
-				<div class="mt-1 text-sm text-slate-500">
+				<div class="app-empty-state-title">选择连接</div>
+				<div class="app-empty-state-description">
 					请先在侧栏选择连接，再进行检索
 				</div>
 			</div>
+			<NButton size="small" type="primary" @click="goToConnections">
+				查看连接
+			</NButton>
 		</div>
 		<div
 			v-else-if="!scopedConnectionId"
-			class="flex flex-col items-center justify-center gap-3 py-20 text-center"
+			class="app-empty-state"
 		>
 			<div
-				class="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-400"
+				class="app-empty-state-icon app-empty-state-icon--warning"
 			>
 				<Database class="h-7 w-7" />
 			</div>
 			<div>
-				<div class="text-base font-semibold text-slate-700">尚未连接</div>
-				<div class="mt-1 text-sm text-slate-500">
+				<div class="app-empty-state-title">尚未连接</div>
+				<div class="app-empty-state-description">
 					当前连接尚未建立，请在侧栏中点击连接
 				</div>
 			</div>
+			<NButton size="small" type="primary" @click="connectScopedProfile">
+				连接当前档案
+			</NButton>
 		</div>
 		<div
 			v-else-if="!hasActiveTable"
-			class="flex flex-col items-center justify-center gap-3 py-20 text-center"
+			class="app-empty-state"
 		>
 			<div
-				class="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-50 text-sky-400"
+				class="app-empty-state-icon app-empty-state-icon--info"
 			>
 				<Search class="h-7 w-7" />
 			</div>
 			<div>
-				<div class="text-base font-semibold text-slate-700">选择要检索的表</div>
-				<div class="mt-1 text-sm text-slate-500">
+				<div class="app-empty-state-title">选择要检索的表</div>
+				<div class="app-empty-state-description">
 					从侧栏中选择表，或使用下方快速切换
 				</div>
 			</div>
+			<NButton
+				v-if="onlyTableName"
+				size="small"
+				type="primary"
+				@click="selectOnlyTable"
+			>
+				使用 {{ onlyTableName }}
+			</NButton>
 			<NSelect
 				v-if="scopedTables.length"
 				:value="scopedActiveTableName"
@@ -554,11 +596,11 @@ async function runCombinedQuery() {
 
 		<div v-else class="space-y-4">
 			<div
-				class="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-4 py-2 text-sm"
+				class="flex items-center justify-between rounded-lg border border-[var(--app-rule)] bg-[var(--app-surface-elevated)] px-4 py-2 text-sm shadow-[var(--app-shadow-whisper)]"
 			>
-				<div class="flex items-center gap-2 text-slate-600">
+				<div class="flex items-center gap-2 text-[var(--app-muted)]">
 					<span>当前表：</span>
-					<span class="font-medium text-slate-800">{{
+					<span class="font-medium text-[var(--app-ink)]">{{
 						scopedActiveTableName
 					}}</span>
 					<NTag size="small" :type="connectionKindTagType">
@@ -579,16 +621,16 @@ async function runCombinedQuery() {
 				<NTabPane name="filter" tab="过滤查询">
 					<div class="grid gap-3 xl:grid-cols-6">
 						<div class="xl:col-span-3">
-							<label class="text-sm font-medium text-slate-600">过滤表达式</label>
+							<label class="text-sm font-medium text-[var(--app-muted)]">过滤表达式</label>
 							<NInput v-model:value="filterExpression" placeholder="id > 10" />
 						</div>
 						<div class="xl:col-span-3 grid grid-cols-2 gap-3">
 							<div>
-								<label class="text-sm font-medium text-slate-600">Limit</label>
+								<label class="text-sm font-medium text-[var(--app-muted)]">Limit</label>
 								<NInputNumber v-model:value="filterLimit" :min="1" />
 							</div>
 							<div>
-								<label class="text-sm font-medium text-slate-600">Offset</label>
+								<label class="text-sm font-medium text-[var(--app-muted)]">Offset</label>
 								<NInputNumber v-model:value="filterOffset" :min="0" />
 							</div>
 						</div>
@@ -785,8 +827,8 @@ async function runCombinedQuery() {
 				{{ resultError }}
 			</NAlert>
 
-			<NCard size="small" title="结果" class="bg-slate-50/60 shadow-sm">
-				<div class="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+			<NCard size="small" title="结果" class="search-results-card">
+				<div class="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--app-muted)]">
 					<div class="flex flex-wrap items-center gap-2">
 						<span>返回行数：{{ resultRows.length }}</span>
 						<NTag
@@ -820,3 +862,60 @@ async function runCombinedQuery() {
 		</div>
 	</div>
 </template>
+
+<style scoped>
+.app-empty-state {
+	display: flex;
+	min-height: min(420px, calc(100vh - 220px));
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 14px;
+	padding: 56px 20px;
+	text-align: center;
+}
+
+.app-empty-state-icon {
+	display: flex;
+	width: 56px;
+	height: 56px;
+	align-items: center;
+	justify-content: center;
+	border-radius: 14px;
+	background: var(--app-surface-panel-muted);
+	color: var(--app-subtle);
+}
+
+.app-empty-state-icon--warning {
+	background: var(--app-warning-soft);
+	color: #f59e0b;
+}
+
+.app-empty-state-icon--info {
+	background: var(--app-accent-soft);
+	color: var(--app-accent);
+}
+
+.app-empty-state-title {
+	color: var(--app-ink);
+	font-size: 16px;
+	font-weight: 650;
+}
+
+.app-empty-state-description {
+	margin-top: 4px;
+	color: var(--app-muted);
+	font-size: 14px;
+}
+
+.search-results-card {
+	background: var(--app-surface-elevated);
+	box-shadow: var(--app-shadow-whisper);
+}
+
+:deep(label),
+:deep(.text-slate-600),
+:deep(.text-slate-500) {
+	color: var(--app-muted);
+}
+</style>

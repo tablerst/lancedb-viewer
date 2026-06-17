@@ -3,7 +3,7 @@ import { emitTo } from "@tauri-apps/api/event"
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow"
 import { open } from "@tauri-apps/plugin-dialog"
 import { FolderOpen } from "lucide-vue-next"
-import { computed, ref } from "vue"
+import { computed, ref, shallowRef } from "vue"
 
 import type { AuthDescriptor } from "../ipc/v1"
 import type { ConnectionKind } from "../lib/connectionKind"
@@ -28,6 +28,7 @@ const authForm = ref({
 })
 const errorMessage = ref("")
 const isSubmitting = ref(false)
+const showAdvancedOptions = shallowRef(false)
 
 const createKind = computed<ConnectionKind>(() => {
 	const value = form.value.uri.trim()
@@ -150,18 +151,18 @@ async function saveProfile() {
 </script>
 
 <template>
-	<div class="h-screen w-screen bg-slate-50 p-4">
-		<NCard title="新建连接" size="small" class="shadow-sm">
+	<div class="h-screen w-screen bg-[var(--app-surface)] p-4 text-[var(--app-ink)]">
+		<NCard title="新建连接" size="small" class="connection-dialog-card">
 			<div class="space-y-3">
 				<NAlert v-if="errorMessage" type="error" :bordered="false">
 					{{ errorMessage }}
 				</NAlert>
 				<div class="space-y-1">
-					<label class="text-xs text-slate-500">连接名称</label>
+					<label class="connection-label">连接名称</label>
 					<NInput v-model:value="form.name" placeholder="例如：本地样例库" />
 				</div>
 				<div class="space-y-1">
-					<label class="text-xs text-slate-500">URI</label>
+					<label class="connection-label">URI</label>
 					<div class="flex items-center gap-2">
 						<NInput
 							v-model:value="form.uri"
@@ -178,35 +179,44 @@ async function saveProfile() {
 							<span class="ml-1">选择文件夹</span>
 						</NButton>
 					</div>
-					<div v-if="showLocalPicker" class="text-xs text-slate-400">
+					<div v-if="showLocalPicker" class="connection-help">
 						选择 LanceDB 的数据库根目录（例如 sample-db）。如果误选了 items.lance 这类 *.lance 目录，会自动改用它的上级目录。
 					</div>
 				</div>
-				<div class="space-y-1">
-					<label class="text-xs text-slate-500">storageOptions (JSON)</label>
-					<NInput
-						v-model:value="form.storageOptionsJson"
-						type="textarea"
-						:autosize="{ minRows: 4, maxRows: 10 }"
-						placeholder='{"aws_region": "us-east-1"}'
-					/>
-				</div>
 
-				<div class="space-y-2 rounded-md border border-slate-100 bg-slate-50/60 p-3">
+				<NButton
+					size="small"
+					quaternary
+					@click="showAdvancedOptions = !showAdvancedOptions"
+				>
+					{{ showAdvancedOptions ? "收起高级连接选项" : "展开高级连接选项" }}
+				</NButton>
+
+				<div v-if="showAdvancedOptions" class="connection-advanced-panel">
+					<div class="space-y-1">
+						<label class="connection-label">storageOptions (JSON)</label>
+						<NInput
+							v-model:value="form.storageOptionsJson"
+							type="textarea"
+							:autosize="{ minRows: 3, maxRows: 8 }"
+							placeholder='{"aws_region": "us-east-1"}'
+						/>
+					</div>
+
 					<div class="flex items-center justify-between">
-						<label class="text-xs font-medium text-slate-600">Auth Descriptor</label>
+						<label class="connection-label connection-label--strong">Auth Descriptor</label>
 						<NSwitch v-model:value="authForm.enabled" size="small" />
 					</div>
 					<div v-if="authForm.enabled" class="space-y-2">
 						<div class="space-y-1">
-							<label class="text-xs text-slate-500">Provider</label>
+							<label class="connection-label">Provider</label>
 							<NInput
 								v-model:value="authForm.provider"
 								placeholder="例如：s3 / gcs / azure"
 							/>
 						</div>
 						<div class="space-y-1">
-							<label class="text-xs text-slate-500">Params (JSON)</label>
+							<label class="connection-label">Params (JSON)</label>
 							<NInput
 								v-model:value="authForm.paramsJson"
 								type="textarea"
@@ -214,7 +224,7 @@ async function saveProfile() {
 								placeholder='{"aws_access_key_id": "...", "aws_secret_access_key": "..."}'
 							/>
 						</div>
-						<div class="flex items-center justify-between text-xs text-slate-500">
+						<div class="flex items-center justify-between text-xs text-[var(--app-muted)]">
 							<span>保存到 Stronghold</span>
 							<NSwitch v-model:value="authForm.saveToStronghold" size="small" />
 						</div>
@@ -241,3 +251,37 @@ async function saveProfile() {
 		</NCard>
 	</div>
 </template>
+
+<style scoped>
+.connection-dialog-card {
+	background: var(--app-surface-elevated);
+	box-shadow: var(--app-shadow-raised);
+}
+
+.connection-label {
+	display: block;
+	color: var(--app-muted);
+	font-size: 12px;
+	font-weight: 500;
+}
+
+.connection-label--strong {
+	color: var(--app-ink);
+}
+
+.connection-help {
+	color: var(--app-muted);
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.connection-advanced-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	border: 1px solid var(--app-rule);
+	border-radius: 8px;
+	background: var(--app-surface-panel-muted);
+	padding: 12px;
+}
+</style>

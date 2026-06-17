@@ -204,12 +204,12 @@ onMounted(() => {
 
 <template>
 	<div class="space-y-4">
-		<NCard size="small" title="凭证库（高级）" class="shadow-sm">
-			<div class="text-xs text-slate-500">
+		<NCard size="small" title="凭证库（高级）" class="credentials-card">
+			<div class="text-xs text-[var(--app-muted)]">
 				这是 Stronghold 的全局凭证库，用于查看/回收未引用凭证。日常配置建议在“连接 → 凭证”中完成。
 			</div>
 			<div class="flex flex-wrap items-center justify-between gap-2">
-				<div class="text-xs text-slate-500">
+				<div class="text-xs text-[var(--app-muted)]">
 					总数：{{ credentials.length }} · 引用中：{{ referencedCount }} · 未引用：{{ unusedCount }}
 				</div>
 				<div class="flex flex-wrap items-center gap-2">
@@ -251,10 +251,10 @@ onMounted(() => {
 					</NPopconfirm>
 				</div>
 			</div>
-			<div class="mt-2 text-xs text-slate-400">
+			<div class="mt-2 text-xs text-[var(--app-muted)]">
 				引用回收策略：连接档案更新/删除后自动清理未引用凭证；可在此手动清理。
 			</div>
-			<div v-if="lastLoadedAt" class="mt-1 text-[11px] text-slate-400">
+			<div v-if="lastLoadedAt" class="mt-1 text-[11px] text-[var(--app-subtle)]">
 				上次刷新：{{ formatTimestamp(lastLoadedAt) }}
 			</div>
 		</NCard>
@@ -263,7 +263,23 @@ onMounted(() => {
 			{{ errorMessage }}
 		</NAlert>
 
-		<NEmpty v-if="!tableData.length && !isLoading" description="暂无保存的凭证" />
+		<div v-if="!tableData.length && !isLoading" class="credentials-empty">
+			<NEmpty description="暂无保存的凭证">
+				<template #extra>
+					<div class="flex flex-wrap justify-center gap-2">
+						<NButton size="small" @click="loadCredentials">刷新</NButton>
+						<NButton
+							size="small"
+							type="primary"
+							:disabled="!activeProfileId"
+							@click="openActiveConnectionCredentials"
+						>
+							配置当前连接
+						</NButton>
+					</div>
+				</template>
+			</NEmpty>
+		</div>
 
 		<NDataTable
 			v-else
@@ -284,5 +300,20 @@ onMounted(() => {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+.credentials-card {
+	background: var(--app-surface-elevated);
+	box-shadow: var(--app-shadow-whisper);
+}
+
+.credentials-empty {
+	display: flex;
+	min-height: 240px;
+	align-items: center;
+	justify-content: center;
+	border: 1px dashed var(--app-rule);
+	border-radius: 8px;
+	background: var(--app-surface-elevated);
 }
 </style>

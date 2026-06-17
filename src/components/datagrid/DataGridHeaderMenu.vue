@@ -244,10 +244,10 @@ function getPresets(): Array<{ label: string; value: string }> {
 	position: fixed;
 	min-width: 220px;
 	max-width: 320px;
-	background: white;
-	border: 1px solid #e2e8f0;
+	background: var(--app-surface-elevated);
+	border: 1px solid var(--app-rule);
 	border-radius: 8px;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+	box-shadow: var(--app-shadow-raised);
 	padding: 4px 0;
 	font-size: 13px;
 	z-index: 1001;
@@ -261,7 +261,7 @@ function getPresets(): Array<{ label: string; value: string }> {
 	padding: 6px 12px;
 	border: none;
 	background: transparent;
-	color: #334155;
+	color: var(--app-ink);
 	cursor: pointer;
 	text-align: left;
 	font-size: 13px;
@@ -270,16 +270,16 @@ function getPresets(): Array<{ label: string; value: string }> {
 }
 
 .header-menu-item:hover {
-	background: #f1f5f9;
+	background: var(--app-control-hover);
 }
 
 .header-menu-item--active {
-	background: #e0f2fe;
-	color: #0284c7;
+	background: var(--app-accent-soft);
+	color: var(--app-accent);
 }
 
 .header-menu-item--active:hover {
-	background: #bae6fd;
+	background: var(--app-accent-soft);
 }
 
 .header-menu-item--indent {
@@ -291,7 +291,7 @@ function getPresets(): Array<{ label: string; value: string }> {
 }
 
 .header-menu-item--danger:hover {
-	background: #fef2f2;
+	background: var(--app-danger-soft);
 }
 
 .header-menu-label {
@@ -299,7 +299,7 @@ function getPresets(): Array<{ label: string; value: string }> {
 	align-items: center;
 	gap: 8px;
 	padding: 6px 12px 2px;
-	color: #94a3b8;
+	color: var(--app-subtle);
 	font-size: 11px;
 	font-weight: 600;
 	text-transform: uppercase;
@@ -314,7 +314,7 @@ function getPresets(): Array<{ label: string; value: string }> {
 
 .header-menu-sep {
 	height: 1px;
-	background: #e2e8f0;
+	background: var(--app-rule);
 	margin: 4px 0;
 }
 
@@ -327,15 +327,17 @@ function getPresets(): Array<{ label: string; value: string }> {
 .header-menu-input {
 	flex: 1;
 	padding: 4px 8px;
-	border: 1px solid #cbd5e1;
+	border: 1px solid var(--app-rule-strong);
 	border-radius: 4px;
 	font-size: 12px;
 	line-height: 20px;
 	outline: none;
+	background: var(--app-control);
+	color: var(--app-ink);
 }
 
 .header-menu-input:focus {
-	border-color: #38bdf8;
+	border-color: var(--app-accent);
 	box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.15);
 }
 
@@ -343,7 +345,7 @@ function getPresets(): Array<{ label: string; value: string }> {
 	padding: 4px 10px;
 	border: none;
 	border-radius: 4px;
-	background: #0ea5e9;
+	background: var(--app-accent);
 	color: white;
 	font-size: 12px;
 	font-weight: 500;
@@ -352,6 +354,6 @@ function getPresets(): Array<{ label: string; value: string }> {
 }
 
 .header-menu-apply:hover {
-	background: #0284c7;
+	background: var(--app-accent-strong);
 }
 </style>

@@ -89,10 +89,10 @@ function nextPage(page: number, pageCount: number) {
 	justify-content: space-between;
 	height: 32px;
 	padding: 0 12px;
-	background: #f8fafc;
-	border-top: 1px solid #e2e8f0;
+	background: var(--app-surface-panel-muted);
+	border-top: 1px solid var(--app-rule);
 	font-size: 12px;
-	color: #64748b;
+	color: var(--app-muted);
 	gap: 12px;
 }
 
@@ -108,7 +108,7 @@ function nextPage(page: number, pageCount: number) {
 }
 
 .datagrid-statusbar-time {
-	color: #94a3b8;
+	color: var(--app-subtle);
 }
 
 .datagrid-statusbar-dirty {
@@ -119,11 +119,11 @@ function nextPage(page: number, pageCount: number) {
 .datagrid-statusbar-select {
 	height: 22px;
 	padding: 0 4px;
-	border: 1px solid #e2e8f0;
+	border: 1px solid var(--app-rule);
 	border-radius: 4px;
 	font-size: 12px;
-	background: white;
-	color: #475569;
+	background: var(--app-control);
+	color: var(--app-ink);
 	cursor: pointer;
 }
 
@@ -139,10 +139,10 @@ function nextPage(page: number, pageCount: number) {
 	justify-content: center;
 	width: 22px;
 	height: 22px;
-	border: 1px solid #e2e8f0;
+	border: 1px solid var(--app-rule);
 	border-radius: 4px;
-	background: white;
-	color: #475569;
+	background: var(--app-control);
+	color: var(--app-muted);
 	font-size: 14px;
 	font-weight: 600;
 	cursor: pointer;
@@ -150,19 +150,21 @@ function nextPage(page: number, pageCount: number) {
 }
 
 .datagrid-statusbar-page-btn:hover:not(:disabled) {
-	background: #f1f5f9;
-	border-color: #94a3b8;
+	background: var(--app-control-hover);
+	border-color: var(--app-rule-strong);
 }
 
 .datagrid-statusbar-page-btn:disabled {
-	color: #cbd5e1;
+	color: var(--app-subtle);
 	cursor: not-allowed;
+	opacity: 0.5;
 }
 
 .datagrid-statusbar-page-num {
 	min-width: 20px;
 	text-align: center;
 	font-weight: 600;
-	color: #334155;
+	color: var(--app-ink);
+	font-variant-numeric: tabular-nums;
 }
 </style>

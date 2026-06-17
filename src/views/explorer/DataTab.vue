@@ -290,7 +290,7 @@ watch(dataRefreshTrigger, () => {
 	<div class="flex h-full flex-col">
 		<div
 			v-if="transportStatus"
-			class="border-b border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-500"
+			class="border-b border-[var(--app-rule)] bg-[var(--app-surface-panel-muted)] px-3 py-1 text-xs text-[var(--app-muted)]"
 		>
 			传输：{{ transportStatus }}
 		</div>
@@ -318,10 +318,10 @@ watch(dataRefreshTrigger, () => {
 		>
 			<!-- Advanced filter slot -->
 			<template v-if="showAdvancedFilter" #advanced-filter>
-				<div class="border-b border-slate-200 bg-slate-50/80 px-3 py-2">
+				<div class="border-b border-[var(--app-rule)] bg-[var(--app-surface-panel-muted)] px-3 py-2">
 					<div class="flex items-end gap-2">
 						<div class="min-w-0 flex-1 space-y-1">
-							<label class="text-xs font-medium text-slate-500">SQL 过滤表达式</label>
+							<label class="text-xs font-medium text-[var(--app-muted)]">SQL 过滤表达式</label>
 							<NInput
 								v-model:value="globalFilter"
 								size="small"

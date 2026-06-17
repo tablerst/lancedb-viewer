@@ -31,6 +31,9 @@ const {
 	activeTableName,
 	activeTableId,
 	schema,
+	isConnecting,
+	isRefreshing,
+	connectProfile,
 	openTable,
 	refreshTables,
 	clearActiveTable,
@@ -133,6 +136,22 @@ async function navigateToTable(tableName: string, tab = "schema") {
 		navigating = false
 	}
 	return true
+}
+
+function connectActiveProfile() {
+	const profileId = activeProfileId.value
+	if (!profileId) {
+		return
+	}
+	void connectProfile(profileId)
+}
+
+function refreshActiveTables() {
+	const profileId = activeProfileId.value
+	if (!profileId) {
+		return
+	}
+	void refreshTables(profileId)
 }
 
 // ── Context menu ───────────────────────────────────────
@@ -342,51 +361,68 @@ watch(
 	<div class="flex h-full flex-col">
 		<div
 			v-if="!canManageTables"
-			class="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-center"
+			class="explorer-empty"
 		>
 			<div
-				class="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"
+				class="explorer-empty-icon"
 			>
 				<Database class="h-7 w-7" />
 			</div>
 			<div>
-				<div class="text-base font-semibold text-slate-700">连接数据库</div>
-				<div class="mt-1 text-sm text-slate-500">
+				<div class="explorer-empty-title">连接数据库</div>
+				<div class="explorer-empty-description">
 					请在侧栏选择连接并建立数据库连接
 				</div>
 			</div>
+			<NButton
+				v-if="activeProfileId"
+				size="small"
+				type="primary"
+				:loading="isConnecting"
+				@click="connectActiveProfile"
+			>
+				连接当前档案
+			</NButton>
 		</div>
 		<div
 			v-else-if="!activeTableName"
-			class="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-center"
+			class="explorer-empty"
 		>
 			<div
-				class="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-50 text-sky-400"
+				class="explorer-empty-icon explorer-empty-icon--info"
 			>
 				<Table2 class="h-7 w-7" />
 			</div>
 			<div>
-				<div class="text-base font-semibold text-slate-700">选择数据表</div>
-				<div class="mt-1 text-sm text-slate-500">
+				<div class="explorer-empty-title">选择数据表</div>
+				<div class="explorer-empty-description">
 					从侧栏的表列表中选择一个表开始浏览
 				</div>
+			</div>
+			<div class="flex flex-wrap justify-center gap-2">
+				<NButton size="small" :loading="isRefreshing" @click="refreshActiveTables">
+					刷新表列表
+				</NButton>
+				<NButton size="small" type="primary" @click="showCreateTableModal = true">
+					创建表
+				</NButton>
 			</div>
 		</div>
 
 		<template v-else>
 			<!-- Sticky breadcrumb + tabs header -->
-			<div class="sticky top-0 z-20 bg-slate-50 pb-1">
+			<div class="sticky top-0 z-20 bg-[var(--app-surface)] pb-1">
 				<div class="flex items-center gap-1.5 py-2 text-sm">
-					<span class="text-slate-500">{{ connectionLabel }}</span>
-					<ChevronRight class="h-3.5 w-3.5 text-slate-400" />
+					<span class="text-[var(--app-muted)]">{{ connectionLabel }}</span>
+					<ChevronRight class="h-3.5 w-3.5 text-[var(--app-subtle)]" />
 					<span
-						class="cursor-context-menu font-medium text-slate-800"
+						class="cursor-context-menu font-medium text-[var(--app-ink)]"
 						@contextmenu="showTableContextMenu(activeTableName!, $event)"
 					>
 						{{ activeTableName }}
 					</span>
-					<span class="mx-1 text-slate-300">|</span>
-					<span class="inline-flex items-center gap-3 text-xs text-slate-400">
+					<span class="mx-1 text-[var(--app-rule-strong)]">|</span>
+					<span class="inline-flex items-center gap-3 text-xs text-[var(--app-muted)]">
 						<span>{{ fieldCount }} 列</span>
 						<span v-if="tableSummaryVersion !== null">v{{ tableSummaryVersion }}</span>
 						<span v-if="tableSummaryIndexCount !== null">
@@ -459,3 +495,45 @@ watch(
 		<CreateTableDialog v-model:show="showCreateTableModal" />
 	</div>
 </template>
+
+<style scoped>
+.explorer-empty {
+	display: flex;
+	min-height: min(420px, calc(100vh - 220px));
+	flex: 1;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 14px;
+	padding: 56px 20px;
+	text-align: center;
+}
+
+.explorer-empty-icon {
+	display: flex;
+	width: 56px;
+	height: 56px;
+	align-items: center;
+	justify-content: center;
+	border-radius: 14px;
+	background: var(--app-surface-panel-muted);
+	color: var(--app-subtle);
+}
+
+.explorer-empty-icon--info {
+	background: var(--app-accent-soft);
+	color: var(--app-accent);
+}
+
+.explorer-empty-title {
+	color: var(--app-ink);
+	font-size: 16px;
+	font-weight: 650;
+}
+
+.explorer-empty-description {
+	margin-top: 4px;
+	color: var(--app-muted);
+	font-size: 14px;
+}
+</style>
