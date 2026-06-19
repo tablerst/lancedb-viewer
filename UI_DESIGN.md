@@ -157,14 +157,17 @@ Schema:
 Versions:
 
 - Show version number, timestamp, and structured metadata entries.
+- Order versions by timestamp descending so the newest table state is at the top.
+- Prefer a GitGraph-like single graph/list surface: each version row should carry
+  its metadata and row-level actions such as open and branch.
 - Avoid raw comma-joined metadata strings.
 - Metadata entries are read-only facts. They must not be styled as disabled
   inputs or editable text fields. Use compact key/value chips, definition rows,
   or a table-like grid.
-- Version checkout and clone/branch commands should live in a narrow command
-  panel or compact action group beside the timeline on desktop. They should not
-  become full-width form cards below the version list unless the viewport is
-  too narrow.
+- Version checkout by explicit number can remain in the toolbar, but routine
+  checkout and clone/branch should be reachable from the relevant version row.
+- Clone/branch controls should open inline from a version row instead of forcing
+  users to copy a source version into a separate command card.
 
 Indexes:
 
@@ -180,8 +183,9 @@ Indexes:
   - PQ/RQ sub-vectors and bits
   - HNSW edges and EF construction
 - Do not expose every LanceDB low-level knob until the UI has a clear need.
-- The index list is the primary surface. Create/delete controls are secondary
-  commands and should be adjacent to, not visually louder than, the list.
+- The index list is the primary surface. Prefer a single table workbench with
+  table-header create/refresh controls and row-level delete actions over a
+  split list/create/delete layout.
 - Advanced vector, PQ/RQ, and HNSW parameters should be grouped as optional
   tuning controls. Do not present every parameter as a same-weight full-width
   input row.

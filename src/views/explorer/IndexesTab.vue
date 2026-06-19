@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Plus, RefreshCw, Trash2 } from "lucide-vue-next"
-import type { DataTableColumns, SelectOption } from "naive-ui"
-import { computed, ref, watch } from "vue"
+import { type DataTableColumns, NButton, NPopconfirm, NTag, type SelectOption } from "naive-ui"
+import { computed, h, ref, watch } from "vue"
 
 import { useCommand } from "../../composables/useCommand"
 import { useWorkspace } from "../../composables/workspaceContext"
@@ -44,6 +44,7 @@ const hnswIndexTypes = new Set<IndexTypeV1>(["ivf_hnsw_pq", "ivf_hnsw_sq"])
 const indexes = ref<IndexDefinitionV1[]>([])
 const isLoadingIndexes = ref(false)
 const indexError = ref("")
+const createFormOpen = ref(false)
 
 function formatIndexStatus(row: IndexDefinitionV1) {
 	if (row.numUnindexedRows === undefined || row.numIndexedRows === undefined) {
@@ -55,53 +56,123 @@ function formatIndexStatus(row: IndexDefinitionV1) {
 	return `待索引 ${row.numUnindexedRows} 行`
 }
 
-function formatOptional(value: unknown) {
-	return value === undefined || value === null || value === "" ? "—" : String(value)
+function isPresentIndexParameter(entry: {
+	label: string
+	value: IndexDefinitionV1["distanceType"] | number | undefined
+}) {
+	return entry.value !== undefined && entry.value !== null
+}
+
+function getIndexParameterEntries(row: IndexDefinitionV1) {
+	return [
+		{ label: "距离", value: row.distanceType },
+		{ label: "分片", value: row.numIndices },
+		{ label: "Loss", value: row.loss },
+	].filter(isPresentIndexParameter)
+}
+
+function renderIndexStatus(row: IndexDefinitionV1) {
+	const label = formatIndexStatus(row)
+	const type =
+		row.numUnindexedRows === undefined
+			? "default"
+			: row.numUnindexedRows === 0
+				? "success"
+				: "warning"
+	return h(NTag, { size: "small", type, bordered: false }, { default: () => label })
+}
+
+function renderIndexParameters(row: IndexDefinitionV1) {
+	const entries = getIndexParameterEntries(row)
+	if (!entries.length) {
+		return h("span", { class: "muted-cell" }, "—")
+	}
+	return h(
+		"div",
+		{ class: "index-param-list" },
+		entries.map((entry) =>
+			h("span", { class: "index-param" }, [
+				h("span", { class: "index-param-label" }, `${entry.label}:`),
+				h("span", { class: "index-param-value" }, String(entry.value)),
+			])
+		)
+	)
 }
 
 const indexColumns: DataTableColumns<IndexDefinitionV1> = [
-	{ title: () => renderHeader("索引名"), key: "name", ellipsis: { tooltip: true } },
+	{
+		title: () => renderHeader("索引名"),
+		key: "name",
+		width: 150,
+		ellipsis: { tooltip: true },
+	},
 	{
 		title: () => renderHeader("类型"),
 		key: "indexType",
+		width: 118,
 		ellipsis: { tooltip: true },
-		render: (row) => indexTypeLabels[row.indexType] ?? row.indexType,
+		render: (row) =>
+			h(
+				NTag,
+				{ size: "small", bordered: false },
+				{ default: () => indexTypeLabels[row.indexType] ?? row.indexType }
+			),
 	},
 	{
 		title: () => renderHeader("列"),
 		key: "columns",
+		width: 150,
 		ellipsis: { tooltip: true },
 		render: (row) => row.columns.join(", "),
 	},
 	{
 		title: () => renderHeader("状态"),
 		key: "status",
+		width: 140,
 		ellipsis: { tooltip: true },
-		render: formatIndexStatus,
+		render: renderIndexStatus,
 	},
 	{
-		title: () => renderHeader("距离"),
-		key: "distanceType",
-		ellipsis: { tooltip: true },
-		render: (row) => formatOptional(row.distanceType),
+		title: () => renderHeader("参数"),
+		key: "parameters",
+		width: 170,
+		render: renderIndexParameters,
 	},
 	{
-		title: () => renderHeader("分片"),
-		key: "numIndices",
-		ellipsis: { tooltip: true },
-		render: (row) => formatOptional(row.numIndices),
-	},
-	{
-		title: () => renderHeader("Loss"),
-		key: "loss",
-		ellipsis: { tooltip: true },
-		render: (row) => formatOptional(row.loss),
+		title: () => renderHeader("操作"),
+		key: "actions",
+		width: 90,
+		fixed: "right",
+		align: "right",
+		render: (row) =>
+			h(
+				NPopconfirm,
+				{
+					positiveText: "删除",
+					negativeText: "取消",
+					onPositiveClick: () => submitDropIndex(row.name),
+				},
+				{
+					default: () => `确定删除索引 ${row.name} 吗？`,
+					trigger: () =>
+						h(
+							NButton,
+							{
+								size: "tiny",
+								type: "error",
+								secondary: true,
+								loading: isDroppingIndex.value && dropIndexName.value === row.name,
+								disabled: !hasActiveTable.value,
+							},
+							{
+								icon: () => h(Trash2, { class: "h-3.5 w-3.5" }),
+								default: () => "删除",
+							}
+						),
+				}
+			),
 	},
 ]
-
-const indexNameOptions = computed<SelectOption[]>(() =>
-	indexes.value.map((index) => ({ label: index.name, value: index.name }))
-)
 
 async function loadIndexes() {
 	const tableId = activeTableId.value
@@ -207,15 +278,16 @@ async function submitCreateIndex() {
 		setStatus("索引创建已提交")
 		await loadIndexes()
 		resetCreateForm()
+		createFormOpen.value = false
 	})
 }
 
 const dropIndexName = ref("")
 const { execute: execDropIndex, isLoading: isDroppingIndex } = useCommand("删除索引失败")
 
-async function submitDropIndex() {
+async function submitDropIndex(indexName: string) {
 	const tableId = activeTableId.value
-	const nameValue = dropIndexName.value.trim()
+	const nameValue = indexName.trim()
 	if (!tableId) {
 		return
 	}
@@ -223,12 +295,16 @@ async function submitDropIndex() {
 		setError("请选择要删除的索引")
 		return
 	}
-	await execDropIndex(async () => {
-		unwrapEnvelope(await dropIndexV1(tableId, nameValue))
-		setStatus(`已删除索引 ${nameValue}`)
-		await loadIndexes()
+	dropIndexName.value = nameValue
+	try {
+		await execDropIndex(async () => {
+			unwrapEnvelope(await dropIndexV1(tableId, nameValue))
+			setStatus(`已删除索引 ${nameValue}`)
+			await loadIndexes()
+		})
+	} finally {
 		dropIndexName.value = ""
-	})
+	}
 }
 
 watch(
@@ -238,6 +314,7 @@ watch(
 		indexError.value = ""
 		indexType.value = "auto"
 		indexReplace.value = true
+		createFormOpen.value = false
 		dropIndexName.value = ""
 		resetCreateForm()
 		isLoadingIndexes.value = false
@@ -253,60 +330,57 @@ watch(
 
 <template>
 	<div class="index-workbench">
-		<section class="index-main-panel">
-			<header class="panel-heading">
+		<section class="index-table-panel">
+			<header class="index-toolbar">
 				<div>
 					<h2 class="panel-title">索引</h2>
-					<p class="panel-subtitle">当前表共 {{ indexes.length }} 个索引</p>
+					<p class="panel-subtitle">
+						表格视图 · {{ indexes.length }} 个索引 · {{ allFieldNames.length }} 列可选
+					</p>
 				</div>
-				<NButton
-					secondary
-					size="small"
-					:loading="isLoadingIndexes"
-					:disabled="!hasActiveTable"
-					@click="loadIndexes"
-				>
-					<template #icon>
-						<RefreshCw class="h-4 w-4" />
-					</template>
-					刷新
-				</NButton>
+				<div class="index-toolbar-actions">
+					<NButton
+						secondary
+						size="small"
+						:loading="isLoadingIndexes"
+						:disabled="!hasActiveTable"
+						@click="loadIndexes"
+					>
+						<template #icon>
+							<RefreshCw class="h-4 w-4" />
+						</template>
+						刷新
+					</NButton>
+					<NButton
+						type="primary"
+						secondary
+						size="small"
+						:disabled="!hasActiveTable"
+						@click="createFormOpen = !createFormOpen"
+					>
+						<template #icon>
+							<Plus class="h-4 w-4" />
+						</template>
+						{{ createFormOpen ? "收起创建" : "新建索引" }}
+					</NButton>
+				</div>
 			</header>
 
 			<NAlert v-if="indexError" type="error" :bordered="false" class="panel-alert">
 				{{ indexError }}
 			</NAlert>
 
-			<NDataTable
-				class="data-table index-table"
-				size="small"
-				:columns="indexColumns"
-				:data="indexes"
-				:loading="isLoadingIndexes"
-				:bordered="false"
-			/>
-		</section>
-
-		<aside class="index-command-panel">
-			<section class="command-section">
-				<div class="command-heading">
-					<div>
-						<h3 class="command-title">创建索引</h3>
-						<p class="command-subtitle">选择列和类型，必要时再调整高级参数</p>
-					</div>
-					<Plus class="command-icon" />
-				</div>
-
-				<div class="command-grid">
+			<div v-show="createFormOpen" class="index-create-editor">
+				<div class="create-primary-grid">
 					<label class="command-field">
-						<span>索引类型</span>
+						<span>类型</span>
 						<NSelect
 							v-model:value="indexType"
 							:options="indexTypeOptions"
 							:disabled="!hasActiveTable"
 						/>
 					</label>
-					<label class="command-field">
+					<label class="command-field command-field--columns">
 						<span>索引列</span>
 						<NSelect
 							v-model:value="indexColumnsToCreate"
@@ -317,13 +391,27 @@ watch(
 						/>
 					</label>
 					<label class="command-field">
-						<span>索引名称</span>
+						<span>名称</span>
 						<NInput
 							v-model:value="indexName"
 							placeholder="my_index（可选）"
 							:disabled="!hasActiveTable"
 						/>
 					</label>
+					<div class="create-actions">
+						<NCheckbox v-model:checked="indexReplace" :disabled="!hasActiveTable">
+							替换同名
+						</NCheckbox>
+						<NButton
+							type="primary"
+							size="small"
+							:loading="isCreatingIndex"
+							:disabled="!hasActiveTable"
+							@click="submitCreateIndex"
+						>
+							创建索引
+						</NButton>
+					</div>
 				</div>
 
 				<NAlert
@@ -359,7 +447,7 @@ watch(
 							<span>Iter</span>
 							<NInputNumber v-model:value="maxIterations" :min="1" />
 						</label>
-						<label class="command-field command-field--wide">
+						<label class="command-field">
 							<span>Partition size</span>
 							<NInputNumber v-model:value="targetPartitionSize" :min="1" />
 						</label>
@@ -368,7 +456,7 @@ watch(
 
 				<div v-if="showsQuantizationOptions" class="tuning-section">
 					<div class="tuning-heading">量化</div>
-					<div class="tuning-grid">
+					<div class="tuning-grid tuning-grid--compact">
 						<label class="command-field">
 							<span>Sub-vectors</span>
 							<NInputNumber v-model:value="numSubVectors" :min="1" />
@@ -382,7 +470,7 @@ watch(
 
 				<div v-if="isHnswIndex" class="tuning-section">
 					<div class="tuning-heading">HNSW</div>
-					<div class="tuning-grid">
+					<div class="tuning-grid tuning-grid--compact">
 						<label class="command-field">
 							<span>Edges</span>
 							<NInputNumber v-model:value="numEdges" :min="1" />
@@ -393,88 +481,35 @@ watch(
 						</label>
 					</div>
 				</div>
+			</div>
 
-				<div class="command-actions">
-					<NCheckbox v-model:checked="indexReplace" :disabled="!hasActiveTable">
-						替换同名
-					</NCheckbox>
-					<NButton
-						type="primary"
-						:loading="isCreatingIndex"
-						:disabled="!hasActiveTable"
-						@click="submitCreateIndex"
-					>
-						创建
-					</NButton>
-				</div>
-			</section>
-
-			<section class="command-section command-section--danger">
-				<div class="command-heading">
-					<div>
-						<h3 class="command-title">维护</h3>
-						<p class="command-subtitle">删除不再需要的索引</p>
-					</div>
-					<Trash2 class="command-icon command-icon--danger" />
-				</div>
-				<label class="command-field">
-					<span>索引</span>
-					<NSelect
-						v-model:value="dropIndexName"
-						:options="indexNameOptions"
-						clearable
-						:disabled="!hasActiveTable || !indexes.length"
-					/>
-				</label>
-				<div class="command-actions command-actions--end">
-					<NPopconfirm
-						positive-text="删除"
-						negative-text="取消"
-						@positive-click="submitDropIndex"
-					>
-						<template #trigger>
-							<NButton
-								type="error"
-								secondary
-								:loading="isDroppingIndex"
-								:disabled="!hasActiveTable || !indexes.length"
-							>
-								删除索引
-							</NButton>
-						</template>
-						确定删除选中的索引吗？
-					</NPopconfirm>
-				</div>
-			</section>
-		</aside>
+			<NDataTable
+				class="data-table index-table"
+				size="small"
+				:columns="indexColumns"
+				:data="indexes"
+				:loading="isLoadingIndexes"
+				:bordered="false"
+				:scroll-x="818"
+			/>
+		</section>
 	</div>
 </template>
 
 <style scoped>
 .index-workbench {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
-	gap: 16px;
-	align-items: start;
-}
-
-.index-main-panel,
-.index-command-panel {
 	min-width: 0;
 }
 
-.index-main-panel,
-.command-section {
+.index-table-panel {
+	min-width: 0;
+	overflow: hidden;
 	border: 1px solid var(--app-rule);
 	border-radius: var(--app-radius-lg);
 	background: var(--app-surface-elevated);
 }
 
-.index-main-panel {
-	overflow: hidden;
-}
-
-.panel-heading {
+.index-toolbar {
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
@@ -483,8 +518,14 @@ watch(
 	border-bottom: 1px solid var(--app-rule);
 }
 
-.panel-title,
-.command-title {
+.index-toolbar-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.panel-title {
 	margin: 0;
 	color: var(--app-ink-strong);
 	font-size: 15px;
@@ -492,8 +533,7 @@ watch(
 	line-height: 1.3;
 }
 
-.panel-subtitle,
-.command-subtitle {
+.panel-subtitle {
 	margin: 4px 0 0;
 	color: var(--app-muted);
 	font-size: 12px;
@@ -504,50 +544,17 @@ watch(
 	margin: 12px 16px 0;
 }
 
-.index-table {
-	padding: 0 12px 12px;
+.index-create-editor {
+	padding: 14px 16px 16px;
+	border-bottom: 1px solid var(--app-rule);
+	background: color-mix(in srgb, var(--app-surface-panel-muted) 58%, transparent);
 }
 
-.index-command-panel {
+.create-primary-grid {
 	display: grid;
-	gap: 12px;
-}
-
-.command-section {
-	padding: 14px;
-}
-
-.command-section--danger {
-	background: color-mix(in srgb, var(--app-danger-soft) 40%, var(--app-surface-elevated));
-}
-
-.command-heading {
-	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 12px;
-	margin-bottom: 14px;
-}
-
-.command-icon {
-	width: 18px;
-	height: 18px;
-	color: var(--app-subtle);
-}
-
-.command-icon--danger {
-	color: var(--app-danger);
-}
-
-.command-grid,
-.tuning-grid {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
+	grid-template-columns: minmax(150px, 0.75fr) minmax(220px, 1.35fr) minmax(170px, 0.95fr) auto;
+	align-items: end;
 	gap: 10px;
-}
-
-.command-grid {
-	grid-template-columns: 1fr;
 }
 
 .command-field {
@@ -560,8 +567,8 @@ watch(
 	line-height: 1.2;
 }
 
-.command-field--wide {
-	grid-column: 1 / -1;
+.command-field--columns {
+	min-width: 220px;
 }
 
 .command-field :deep(.n-input-number),
@@ -574,29 +581,80 @@ watch(
 	margin-top: 10px;
 }
 
+.create-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 10px;
+	min-width: 176px;
+}
+
 .tuning-section {
-	margin-top: 14px;
+	display: grid;
+	grid-template-columns: 96px minmax(0, 1fr);
+	gap: 10px;
+	margin-top: 12px;
 	padding-top: 12px;
-	border-top: 1px solid var(--app-rule);
+	border-top: 1px solid color-mix(in srgb, var(--app-rule) 72%, transparent);
 }
 
 .tuning-heading {
-	margin-bottom: 10px;
+	padding-top: 6px;
 	color: var(--app-ink);
 	font-size: 12px;
 	font-weight: 680;
 }
 
-.command-actions {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
+.tuning-grid {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
 	gap: 10px;
-	margin-top: 14px;
 }
 
-.command-actions--end {
-	justify-content: flex-end;
+.tuning-grid--compact {
+	grid-template-columns: repeat(2, minmax(140px, 1fr));
+	justify-content: start;
+	max-width: 440px;
+}
+
+.index-table {
+	padding: 0 12px 12px;
+}
+
+.muted-cell {
+	color: var(--app-subtle);
+}
+
+.index-param-list {
+	display: flex;
+	min-width: 0;
+	flex-wrap: wrap;
+	gap: 4px 8px;
+}
+
+.index-param {
+	display: inline-flex;
+	min-width: 0;
+	align-items: baseline;
+	gap: 3px;
+	color: var(--app-ink);
+	font-family: var(--app-mono-font);
+	font-size: 11px;
+	line-height: 1.4;
+}
+
+.index-param-label {
+	color: var(--app-muted);
+	font-family: var(--app-font);
+	font-size: 11px;
+	font-weight: 620;
+}
+
+.index-param-value {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .data-table :deep(.n-data-table-th),
@@ -615,27 +673,40 @@ watch(
 	vertical-align: bottom;
 }
 
-@media (max-width: 1100px) {
-	.index-workbench {
+@media (max-width: 1180px) {
+	.create-primary-grid,
+	.tuning-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.create-actions,
+	.tuning-section {
+		grid-column: 1 / -1;
+	}
+
+	.tuning-section {
 		grid-template-columns: 1fr;
 	}
 
-	.index-command-panel {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+	.tuning-heading {
+		padding-top: 0;
 	}
 }
 
 @media (max-width: 720px) {
-	.panel-heading,
-	.command-actions {
+	.index-toolbar,
+	.create-actions {
 		flex-direction: column;
 		align-items: stretch;
 	}
 
-	.index-command-panel,
-	.command-grid,
+	.create-primary-grid,
 	.tuning-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.command-field--columns {
+		min-width: 0;
 	}
 }
 </style>
