@@ -125,6 +125,9 @@ Search table context:
   a prominent one-click selection.
 - Quick table selection should update the Search workspace context; it should
   not unexpectedly move the user to the Explorer schema tab.
+- When a table is selected, Search should use the same compact
+  connection/table breadcrumb trigger as Explorer instead of a bordered header
+  card with a separate select control.
 - Search empty states should make the required next input explicit: connection,
   table, query text, vector input, or index/field selection.
 - Search result tables should preserve score metadata columns when available,

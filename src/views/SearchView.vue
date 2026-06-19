@@ -1,6 +1,7 @@
 ﻿<script setup lang="ts">
-import { Database, Search } from "lucide-vue-next"
+import { ChevronDown, ChevronRight, Database, Search } from "lucide-vue-next"
 import type { DataTableColumns, SelectOption } from "naive-ui"
+import type { DropdownMixedOption } from "naive-ui/lib/dropdown/src/interface"
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
@@ -91,6 +92,9 @@ const hasActiveTable = computed(() => Boolean(scopedActiveTableId.value))
 const tableOptions = computed<SelectOption[]>(() =>
 	scopedTables.value.map((item) => ({ label: item.name, value: item.name }))
 )
+const tableDropdownOptions = computed<DropdownMixedOption[]>(() =>
+	scopedTables.value.map((item) => ({ label: item.name, key: item.name }))
+)
 const onlyTableName = computed(() =>
 	scopedTables.value.length === 1 ? (scopedTables.value[0]?.name ?? null) : null
 )
@@ -125,6 +129,13 @@ async function onTableSelect(name: string | null) {
 	}
 	clearMessages()
 	await openTable(id, name)
+}
+
+function onBreadcrumbTableSelect(key: string | number) {
+	if (typeof key !== "string" || key === scopedActiveTableName.value) {
+		return
+	}
+	void onTableSelect(key)
 }
 
 const allFieldNames = computed(() => scopedSchema.value?.fields.map((field) => field.name) ?? [])
@@ -595,26 +606,40 @@ async function runCombinedQuery() {
 		</div>
 
 		<div v-else class="space-y-4">
-			<div
-				class="flex items-center justify-between rounded-md border border-[var(--app-rule)] bg-[var(--app-surface-elevated)] px-4 py-2 text-sm"
-			>
-				<div class="flex items-center gap-2 text-[var(--app-muted)]">
-					<span>当前表：</span>
-					<span class="font-medium text-[var(--app-ink)]">{{
-						scopedActiveTableName
-					}}</span>
-					<NTag size="small" :type="connectionKindTagType">
-						{{ scopedProfile?.name }} · {{ connectionKindLabel }}
+			<div class="search-breadcrumb-shell">
+				<div class="search-breadcrumb text-sm">
+					<span class="search-breadcrumb-connection">{{ scopedProfile?.name }}</span>
+					<ChevronRight class="search-breadcrumb-separator" aria-hidden="true" />
+					<NDropdown
+						v-if="tableDropdownOptions.length > 1"
+						trigger="click"
+						placement="bottom-start"
+						:options="tableDropdownOptions"
+						:show-arrow="false"
+						@select="onBreadcrumbTableSelect"
+					>
+						<button
+							type="button"
+							class="search-breadcrumb-table-trigger"
+							:aria-label="`切换表，当前为 ${scopedActiveTableName}`"
+						>
+							<span class="search-breadcrumb-table-name">
+								{{ scopedActiveTableName }}
+							</span>
+							<ChevronDown class="search-breadcrumb-caret" aria-hidden="true" />
+						</button>
+					</NDropdown>
+					<span
+						v-else
+						class="search-breadcrumb-table-trigger search-breadcrumb-table-trigger--single"
+					>
+						<span class="search-breadcrumb-table-name">{{ scopedActiveTableName }}</span>
+					</span>
+					<span class="search-breadcrumb-divider">|</span>
+					<NTag v-if="connectionKindLabel" size="small" :type="connectionKindTagType">
+						{{ connectionKindLabel }}
 					</NTag>
 				</div>
-				<NSelect
-					:value="scopedActiveTableName"
-					:options="tableOptions"
-					filterable
-					size="small"
-					class="w-48"
-					@update:value="onTableSelect"
-				/>
 			</div>
 
 			<NTabs v-model:value="activeTab" type="line" class="search-mode-tabs">
@@ -928,6 +953,94 @@ async function runCombinedQuery() {
 .search-results-card {
 	background: var(--app-surface-elevated);
 	box-shadow: none;
+}
+
+.search-breadcrumb-shell {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	border-bottom: 1px solid var(--app-rule);
+	padding: 8px 0;
+}
+
+.search-breadcrumb {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 6px;
+}
+
+.search-breadcrumb-connection {
+	flex: 0 1 auto;
+	overflow: hidden;
+	color: var(--app-muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.search-breadcrumb-separator {
+	width: 14px;
+	height: 14px;
+	flex: 0 0 auto;
+	color: var(--app-subtle);
+}
+
+.search-breadcrumb-table-trigger {
+	display: inline-flex;
+	min-width: 0;
+	max-width: min(340px, 44vw);
+	align-items: center;
+	gap: 5px;
+	padding: 2px 5px;
+	border: 0;
+	border-radius: var(--app-radius-sm);
+	background: transparent;
+	color: var(--app-ink);
+	cursor: pointer;
+	font: inherit;
+	font-weight: 650;
+	line-height: 1.35;
+}
+
+.search-breadcrumb-table-trigger:hover {
+	background: var(--app-surface-panel-muted);
+}
+
+.search-breadcrumb-table-trigger:focus-visible {
+	outline: 2px solid var(--app-accent);
+	outline-offset: 2px;
+}
+
+.search-breadcrumb-table-trigger:active {
+	transform: translateY(1px);
+}
+
+.search-breadcrumb-table-trigger--single {
+	cursor: default;
+}
+
+.search-breadcrumb-table-trigger--single:hover {
+	background: transparent;
+}
+
+.search-breadcrumb-table-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.search-breadcrumb-caret {
+	width: 13px;
+	height: 13px;
+	flex: 0 0 auto;
+	color: var(--app-subtle);
+}
+
+.search-breadcrumb-divider {
+	flex: 0 0 auto;
+	margin: 0 4px;
+	color: var(--app-rule-strong);
 }
 
 .search-mode-tabs :deep(.n-tabs-pane-wrapper) {
