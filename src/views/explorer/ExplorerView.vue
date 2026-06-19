@@ -2,7 +2,16 @@
 import { LogicalPosition } from "@tauri-apps/api/dpi"
 import { Menu, MenuItem } from "@tauri-apps/api/menu"
 import { confirm } from "@tauri-apps/plugin-dialog"
-import { ChevronRight, Database, History, ListTree, Table2, TableProperties } from "lucide-vue-next"
+import {
+	ChevronDown,
+	ChevronRight,
+	Database,
+	History,
+	ListTree,
+	Table2,
+	TableProperties,
+} from "lucide-vue-next"
+import type { DropdownMixedOption } from "naive-ui/lib/dropdown/src/interface"
 import { type Component, computed, h, nextTick, provide, readonly, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { useCommand } from "../../composables/useCommand"
@@ -28,6 +37,7 @@ const {
 	activeProfileId,
 	activeProfile,
 	connectionId,
+	tables,
 	activeTableName,
 	activeTableId,
 	schema,
@@ -95,6 +105,9 @@ async function loadTableSummary() {
 
 const canManageTables = computed(() => Boolean(connectionId.value))
 const connectionLabel = computed(() => activeProfile.value?.name ?? "未连接")
+const tableDropdownOptions = computed<DropdownMixedOption[]>(() =>
+	tables.value.map((table) => ({ label: table.name, key: table.name }))
+)
 
 function renderTabLabel(icon: Component, label: string) {
 	return () =>
@@ -113,6 +126,14 @@ function switchTab(tab: string | number) {
 			params: { id, tableName, tab: String(tab) },
 		})
 	}
+}
+
+function selectBreadcrumbTable(key: string | number) {
+	if (typeof key !== "string" || key === activeTableName.value) {
+		return
+	}
+	clearMessages()
+	void navigateToTable(key, activeInnerTab.value)
 }
 
 let navigating = false
@@ -412,17 +433,36 @@ watch(
 		<template v-else>
 			<!-- Sticky breadcrumb + tabs header -->
 			<div class="sticky top-0 z-20 bg-[var(--app-surface)] pb-1">
-				<div class="flex items-center gap-1.5 py-2 text-sm">
+				<div class="explorer-breadcrumb py-2 text-sm">
 					<span class="text-[var(--app-muted)]">{{ connectionLabel }}</span>
 					<ChevronRight class="h-3.5 w-3.5 text-[var(--app-subtle)]" />
+					<NDropdown
+						v-if="tableDropdownOptions.length > 1"
+						trigger="click"
+						placement="bottom-start"
+						:options="tableDropdownOptions"
+						:show-arrow="false"
+						@select="selectBreadcrumbTable"
+					>
+						<button
+							type="button"
+							class="breadcrumb-table-trigger"
+							:aria-label="`切换表，当前为 ${activeTableName}`"
+							@contextmenu="showTableContextMenu(activeTableName!, $event)"
+						>
+							<span class="breadcrumb-table-name">{{ activeTableName }}</span>
+							<ChevronDown class="breadcrumb-table-caret" aria-hidden="true" />
+						</button>
+					</NDropdown>
 					<span
-						class="cursor-context-menu font-medium text-[var(--app-ink)]"
+						v-else
+						class="breadcrumb-table-trigger breadcrumb-table-trigger--single"
 						@contextmenu="showTableContextMenu(activeTableName!, $event)"
 					>
-						{{ activeTableName }}
+						<span class="breadcrumb-table-name">{{ activeTableName }}</span>
 					</span>
 					<span class="mx-1 text-[var(--app-rule-strong)]">|</span>
-					<span class="inline-flex items-center gap-3 text-xs text-[var(--app-muted)]">
+					<span class="explorer-breadcrumb-summary">
 						<span>{{ fieldCount }} 列</span>
 						<span v-if="tableSummaryVersion !== null">v{{ tableSummaryVersion }}</span>
 						<span v-if="tableSummaryIndexCount !== null">
@@ -497,6 +537,79 @@ watch(
 </template>
 
 <style scoped>
+.explorer-breadcrumb {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 6px;
+}
+
+.breadcrumb-table-trigger {
+	display: inline-flex;
+	min-width: 0;
+	max-width: min(340px, 44vw);
+	align-items: center;
+	gap: 5px;
+	padding: 2px 5px;
+	border: 0;
+	border-radius: var(--app-radius-sm);
+	background: transparent;
+	color: var(--app-ink);
+	cursor: pointer;
+	font: inherit;
+	font-weight: 650;
+	line-height: 1.35;
+}
+
+.breadcrumb-table-trigger:hover {
+	background: var(--app-surface-panel-muted);
+}
+
+.breadcrumb-table-trigger:focus-visible {
+	outline: 2px solid var(--app-accent);
+	outline-offset: 2px;
+}
+
+.breadcrumb-table-trigger:active {
+	transform: translateY(1px);
+}
+
+.breadcrumb-table-trigger:disabled {
+	cursor: default;
+}
+
+.breadcrumb-table-trigger--single:hover,
+.breadcrumb-table-trigger--single:disabled {
+	background: transparent;
+}
+
+.breadcrumb-table-trigger--single {
+	cursor: context-menu;
+}
+
+.breadcrumb-table-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.breadcrumb-table-caret {
+	width: 13px;
+	height: 13px;
+	flex: 0 0 auto;
+	color: var(--app-subtle);
+}
+
+.explorer-breadcrumb-summary {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 12px;
+	color: var(--app-muted);
+	font-size: 12px;
+}
+
 .explorer-empty {
 	display: flex;
 	min-height: min(420px, calc(100vh - 220px));

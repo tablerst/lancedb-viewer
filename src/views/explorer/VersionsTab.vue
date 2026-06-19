@@ -125,13 +125,14 @@ const timelineItems = computed(() =>
 			const isBranching = v.version === branchSourceVersion.value
 			const metadataEntries = getMetadataEntries(v.metadata)
 			const summaryEntries = buildVersionMetrics(metadataEntries)
+			const summaryKeys = new Set(summaryEntries.map((entry) => entry.key))
+			const hiddenMetadataEntries = metadataEntries.filter((entry) => !summaryKeys.has(entry.key))
 			return {
 				version: v.version,
 				isCurrent,
 				isBranching,
 				time: formatTimestamp(v.timestamp),
-				metadataEntries,
-				moreMetadataCount: Math.max(0, metadataEntries.length - summaryEntries.length),
+				hiddenMetadataEntries,
 				summaryEntries,
 			}
 		})
@@ -394,9 +395,36 @@ watch(
 									<span class="version-metric-label">{{ entry.label }}</span>
 									<span class="version-metric-value">{{ entry.value }}</span>
 								</div>
-								<span v-if="item.moreMetadataCount" class="version-more-metadata">
-									+{{ item.moreMetadataCount }}
-								</span>
+								<NPopover
+									v-if="item.hiddenMetadataEntries.length"
+									trigger="hover"
+									placement="top"
+									:show-arrow="false"
+								>
+									<template #trigger>
+										<button
+											type="button"
+											class="version-more-metadata"
+											:aria-label="`查看 v${item.version} 的更多 metadata`"
+										>
+											+{{ item.hiddenMetadataEntries.length }}
+										</button>
+									</template>
+									<div class="version-metadata-popover">
+										<div
+											v-for="entry in item.hiddenMetadataEntries"
+											:key="`${item.version}-${entry.key}`"
+											class="version-metadata-popover-row"
+										>
+											<span class="version-metadata-popover-key">
+												{{ versionMetricLabels[entry.key] ?? entry.key }}
+											</span>
+											<span class="version-metadata-popover-value">
+												{{ formatMetricValue(entry.key, entry.value) }}
+											</span>
+										</div>
+									</div>
+								</NPopover>
 							</div>
 							<div v-else class="version-empty-metadata">无 metadata</div>
 
@@ -620,11 +648,12 @@ watch(
 .version-card {
 	display: grid;
 	grid-template-areas: "main metrics actions";
-	grid-template-columns: minmax(180px, 0.68fr) minmax(360px, 1.15fr) auto;
+	grid-template-columns: minmax(190px, 0.9fr) minmax(0, max-content) minmax(118px, auto);
 	align-items: center;
-	gap: 12px;
+	column-gap: 14px;
+	max-width: 100%;
 	min-width: 0;
-	padding: 8px 10px;
+	padding: 8px 12px;
 	border: 1px solid transparent;
 	border-radius: var(--app-radius-md);
 	background: color-mix(in srgb, var(--app-surface-panel-muted) 54%, transparent);
@@ -646,7 +675,7 @@ watch(
 
 .version-row-header {
 	display: grid;
-	grid-template-columns: minmax(0, auto) 1fr;
+	grid-template-columns: minmax(66px, auto) minmax(0, 1fr);
 	align-items: baseline;
 	gap: 10px;
 	min-width: 0;
@@ -674,21 +703,25 @@ watch(
 
 .version-metrics-strip {
 	grid-area: metrics;
-	display: flex;
+	display: grid;
+	grid-template-columns:
+		minmax(74px, 82px)
+		minmax(104px, 112px)
+		minmax(66px, 74px)
+		minmax(90px, 100px)
+		28px;
 	min-width: 0;
-	flex-wrap: nowrap;
 	align-items: center;
-	gap: 4px 8px;
+	column-gap: 6px;
 	overflow: hidden;
 	font-size: 12px;
 	line-height: 1.35;
 }
 
 .version-metric {
-	display: inline-flex;
-	flex: 0 1 132px;
-	min-width: 78px;
-	max-width: 150px;
+	display: inline-grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	min-width: 0;
 	align-items: baseline;
 	gap: 4px;
 }
@@ -717,10 +750,56 @@ watch(
 }
 
 .version-more-metadata {
-	flex: 0 0 auto;
+	justify-self: start;
+	width: 28px;
+	padding: 0 2px;
+	border: 0;
+	background: transparent;
 	color: var(--app-subtle);
+	cursor: help;
 	font-family: var(--app-mono-font);
 	font-size: 11px;
+	line-height: 1.35;
+	text-align: left;
+}
+
+.version-more-metadata:hover,
+.version-more-metadata:focus-visible {
+	color: var(--app-accent);
+	text-decoration: underline;
+}
+
+.version-metadata-popover {
+	display: grid;
+	min-width: 240px;
+	max-width: 340px;
+	gap: 6px;
+	padding: 2px;
+}
+
+.version-metadata-popover-row {
+	display: grid;
+	grid-template-columns: minmax(120px, 1fr) minmax(0, auto);
+	align-items: baseline;
+	gap: 14px;
+	font-size: 12px;
+	line-height: 1.45;
+}
+
+.version-metadata-popover-key {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--app-muted);
+	font-weight: 600;
+}
+
+.version-metadata-popover-value {
+	min-width: 0;
+	color: var(--app-ink);
+	font-family: var(--app-mono-font);
+	text-align: right;
 }
 
 .version-empty-metadata {
@@ -738,7 +817,12 @@ watch(
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
-	gap: 6px;
+	gap: 8px;
+	min-width: max-content;
+}
+
+.version-row-actions :deep(.n-button) {
+	min-width: 42px;
 }
 
 .branch-editor {
@@ -808,17 +892,22 @@ watch(
 	border-top: 0;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1280px) {
 	.version-card {
-		grid-template-columns: minmax(158px, 0.62fr) minmax(260px, 1fr) auto;
+		grid-template-columns: minmax(178px, 1fr) minmax(0, max-content) minmax(110px, auto);
+		column-gap: 12px;
 	}
 
-	.version-metric {
-		flex-basis: 108px;
-		min-width: 66px;
+	.version-metrics-strip {
+		grid-template-columns: minmax(72px, 80px) minmax(102px, 112px) minmax(88px, 100px) 28px;
+		column-gap: 6px;
 	}
 
 	.version-metric:nth-child(3) {
+		display: none;
+	}
+
+	.version-metric:nth-child(4) {
 		display: none;
 	}
 
@@ -828,6 +917,26 @@ watch(
 
 	.branch-actions {
 		grid-column: 1 / -1;
+	}
+}
+
+@media (max-width: 1180px) {
+	.version-card {
+		grid-template-columns: minmax(168px, 1fr) minmax(0, max-content) minmax(104px, auto);
+		column-gap: 10px;
+	}
+
+	.version-metrics-strip {
+		grid-template-columns: minmax(72px, 80px) minmax(94px, 108px) 28px;
+	}
+
+	.version-metric:nth-child(2),
+	.version-metric:nth-child(3) {
+		display: none;
+	}
+
+	.version-metric:nth-child(4) {
+		display: inline-grid;
 	}
 }
 
@@ -850,14 +959,13 @@ watch(
 	}
 
 	.version-metrics-strip {
-		flex-wrap: nowrap;
-		gap: 3px 8px;
+		grid-template-columns: minmax(74px, 92px) minmax(106px, 126px) 28px;
+		column-gap: 8px;
 		overflow: hidden;
 	}
 
-	.version-metric {
-		flex: 0 1 auto;
-		max-width: 92px;
+	.version-metric:nth-child(2) {
+		display: inline-grid;
 	}
 
 	.version-metric:nth-child(3),
@@ -876,6 +984,23 @@ watch(
 
 	.version-row-actions :deep(.n-button) {
 		padding: 0 7px;
+	}
+}
+
+@media (max-width: 980px) {
+	.version-card {
+		grid-template-areas:
+			"main actions"
+			"metrics actions";
+		grid-template-columns: minmax(0, 1fr) minmax(96px, auto);
+	}
+
+	.version-metrics-strip {
+		grid-template-columns: minmax(74px, 92px) 28px;
+	}
+
+	.version-metric:nth-child(2) {
+		display: none;
 	}
 }
 
@@ -902,9 +1027,20 @@ watch(
 		grid-template-columns: 1fr;
 	}
 
+	.version-card {
+		grid-template-areas:
+			"main"
+			"metrics"
+			"actions";
+	}
+
 	.version-row-header {
 		grid-template-columns: 1fr;
 		gap: 4px;
+	}
+
+	.version-metrics-strip {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px;
 	}
 
 	.version-graph {

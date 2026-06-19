@@ -31,6 +31,9 @@ missing.
   connection support is disabled for this version.
 - Breadcrumb and active table controls should keep the selected connection/table
   clear without nesting multiple layers of tabs.
+- In Explorer, the table breadcrumb is also a compact table selector. Switching
+  it should keep the user on the current Explorer tab for the newly selected
+  table.
 - Primary navigation is a global rail. It should remain visually distinct from
   the connection sidebar in both light and dark themes, expose accessible labels
   for icon/text buttons, and keep active route state obvious at a glance.
@@ -164,6 +167,8 @@ Versions:
 - Metadata entries are read-only facts. They must not be styled as disabled
   inputs or editable text fields. Use compact key/value chips, definition rows,
   or a table-like grid.
+- Condensed metadata counts such as `+3` must reveal the omitted key/value facts
+  through a hover/focus popover.
 - Version checkout by explicit number can remain in the toolbar, but routine
   checkout and clone/branch should be reachable from the relevant version row.
 - Clone/branch controls should open inline from a version row instead of forcing
