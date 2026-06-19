@@ -4,6 +4,8 @@ LanceDB Viewer is a Tauri v2 desktop app for inspecting and operating LanceDB
 databases. The frontend is Vue 3 + TypeScript, and the backend is Rust with
 LanceDB 0.23.1, Arrow, and Tauri IPC v1.
 
+Current release target: `v0.0.2`.
+
 The current product shape is a work-focused database studio: a dark global
 navigation rail, a collapsible connection sidebar, and a right workspace for
 Explorer, Search, Credentials, and related management views.
