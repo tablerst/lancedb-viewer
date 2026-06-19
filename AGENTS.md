@@ -98,6 +98,9 @@ Run commands from the project root unless noted.
     contracts changed.
   - Run `bun run test` when utilities, composables, data transforms, or existing
     test-covered behavior changed.
+  - For visible UI, layout, responsive, interaction, or desktop-rendering
+    changes, prefer the repository `tauri-webdriver` skill for real Tauri
+    WebView inspection before relying on browser-only screenshots.
 - Rust backend or IPC command changes:
   - Run `cargo test --manifest-path src-tauri/Cargo.toml`.
   - Run `cargo build --manifest-path src-tauri/Cargo.toml` when build wiring,
@@ -106,9 +109,17 @@ Run commands from the project root unless noted.
   - Update frontend and backend IPC types together.
   - Run `bun run build` and `cargo test --manifest-path src-tauri/Cargo.toml`.
 - Desktop shell or WebView behavior:
-  - Use `bun run dev` for browser-only feedback.
-  - Use `bun tauri dev` or the repository `tauri-webdriver` skill when native
-    shell behavior, plugins, dialogs, filesystem access, or screenshots matter.
+  - Use `bun run dev` only for quick browser-only diagnostics.
+  - Use `bun tauri dev` or the repository `tauri-webdriver` skill for real
+    frontend effect checks and debugging whenever native shell behavior,
+    WebView2 rendering, responsive sizing, plugins, dialogs, filesystem access,
+    screenshots, or desktop sign-off matter.
+  - When the user already has a Tauri process running, do not stop it. Prefer a
+    separate WebDriver-controlled session, or attach/reuse existing WebDriver
+    state when available.
+  - Check at least one constrained/narrow width and one normal desktop width for
+    layout-sensitive changes, and include DOM/layout evidence such as no
+    horizontal overflow when that was the issue.
 - Keep tests deterministic. Prefer temp directories, sample DBs, fakes, and
   local fixtures over network or shared external resources.
 
@@ -295,3 +306,8 @@ Run commands from the project root unless noted.
   checklists change.
 - If new commands, IPC endpoints, or env vars are added, document them in the
   same change.
+- If a Tauri/WebDriver debug probe or workflow proves reusable, update
+  `.agents/skills/tauri-webdriver/` in the same change: prefer adding
+  parameterized script support under `scripts/`, then document the usage in the
+  skill or `references/`. Keep helpers generic, stdlib-only where practical,
+  and scoped so cleanup never kills unrelated user processes.

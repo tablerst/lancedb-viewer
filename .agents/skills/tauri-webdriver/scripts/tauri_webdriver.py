@@ -369,6 +369,18 @@ def command_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_resize(args: argparse.Namespace) -> int:
+    session_id = load_session_id(args)
+    payload = {"width": args.width, "height": args.height}
+    if args.x is not None:
+        payload["x"] = args.x
+    if args.y is not None:
+        payload["y"] = args.y
+    rect = http_json("POST", session_url(args.driver_url, session_id, "/window/rect"), payload).get("value")
+    print_json({"rect": rect})
+    return 0
+
+
 def command_wait(args: argparse.Namespace) -> int:
     session_id = load_session_id(args)
     result = wait_for_condition(args, session_id)
@@ -437,6 +449,61 @@ def command_execute(args: argparse.Namespace) -> int:
         script = args.script
     result = execute_js(args.driver_url, session_id, script, [])
     print_json(result)
+    return 0
+
+
+def command_layout_check(args: argparse.Namespace) -> int:
+    session_id = load_session_id(args)
+    script = r"""
+const selector = arguments[0];
+const parentSelector = arguments[1];
+const absentSelector = arguments[2];
+const element = document.querySelector(selector);
+const parent = parentSelector ? document.querySelector(parentSelector) : null;
+const targetRect = element ? element.getBoundingClientRect() : null;
+const parentRect = parent ? parent.getBoundingClientRect() : null;
+const viewport = {
+  width: window.innerWidth,
+  height: window.innerHeight,
+  scrollWidth: document.documentElement.scrollWidth,
+  clientWidth: document.documentElement.clientWidth,
+  scrollHeight: document.documentElement.scrollHeight,
+  clientHeight: document.documentElement.clientHeight,
+};
+const hasHorizontalOverflow = viewport.scrollWidth > viewport.clientWidth;
+const hasVerticalOverflow = viewport.scrollHeight > viewport.clientHeight;
+const overflowsViewport = targetRect
+  ? targetRect.right > window.innerWidth + 1 || targetRect.left < -1
+  : null;
+const overflowsParent = targetRect && parentRect
+  ? targetRect.right > parentRect.right + 1 || targetRect.left < parentRect.left - 1
+  : null;
+return {
+  selector,
+  exists: Boolean(element),
+  text: element ? (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim() : null,
+  rect: targetRect ? targetRect.toJSON() : null,
+  parentSelector,
+  parentRect: parentRect ? parentRect.toJSON() : null,
+  absentSelector,
+  absentSelectorExists: absentSelector ? Boolean(element && element.querySelector(absentSelector)) : null,
+  viewport,
+  hasHorizontalOverflow,
+  hasVerticalOverflow,
+  overflowsViewport,
+  overflowsParent,
+};
+"""
+    result = execute_js(args.driver_url, session_id, script, [args.selector, args.parent, args.absent])
+    print_json(result)
+    if args.fail_on_overflow and result and (
+        result.get("hasHorizontalOverflow")
+        or result.get("overflowsViewport")
+        or result.get("overflowsParent")
+    ):
+        return 2
+    if args.fail_on_absent and result and result.get("absentSelectorExists"):
+        return 3
     return 0
 
 
@@ -535,6 +602,14 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(status)
     status.set_defaults(func=command_status)
 
+    resize = subparsers.add_parser("resize")
+    add_common(resize)
+    resize.add_argument("--width", required=True, type=int)
+    resize.add_argument("--height", required=True, type=int)
+    resize.add_argument("--x", type=int)
+    resize.add_argument("--y", type=int)
+    resize.set_defaults(func=command_resize)
+
     wait = subparsers.add_parser("wait")
     add_common(wait)
     add_wait_options(wait)
@@ -568,6 +643,15 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--script")
     group.add_argument("--script-file")
     execute.set_defaults(func=command_execute)
+
+    layout = subparsers.add_parser("layout-check")
+    add_common(layout)
+    layout.add_argument("--selector", required=True)
+    layout.add_argument("--parent")
+    layout.add_argument("--absent")
+    layout.add_argument("--fail-on-overflow", action="store_true")
+    layout.add_argument("--fail-on-absent", action="store_true")
+    layout.set_defaults(func=command_layout_check)
 
     smoke = subparsers.add_parser("smoke")
     add_common(smoke)

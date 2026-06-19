@@ -13,6 +13,9 @@ dist-ssr
 coverage
 *.local
 
+# Python
+__pycache__/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -23,6 +26,8 @@ coverage
 *.njsproj
 *.sln
 *.sw?
+
+# Repo files
 /PLAN.md
 /sample-db/
 dev-docs
